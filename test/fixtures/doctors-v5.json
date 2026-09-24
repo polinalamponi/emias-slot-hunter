@@ -1,0 +1,14 @@
+{
+  "payload": {
+    "availableResources": [
+      {
+        "id": 200000002,
+        "name": "Врач_1",
+        "arType": 10,
+        "complexResource": [
+          { "id": 300000001, "name": "1" }
+        ]
+      }
+    ]
+  }
+}

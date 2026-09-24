@@ -1,0 +1,86 @@
+{
+  "payload": {
+    "arInfo": {
+      "referrals": {
+        "items": [
+          {
+            "id": 900000000001,
+            "type": "REF_TO_LDP",
+            "startTime": "2026-09-14",
+            "endTime": "2026-10-14",
+            "lpuId": 10000002,
+            "lpuName": "Тестовая больница",
+            "toLdp": {
+              "ldpTypeId": 599925,
+              "ldpTypeName": "Ультразвуковое исследование вен нижних конечностей"
+            },
+            "countActiveAppointment": 1
+          },
+          {
+            "id": 900000000002,
+            "type": "REF_TO_DOCTOR",
+            "startTime": "2026-09-14",
+            "endTime": "2026-10-13",
+            "lpuId": 10000003,
+            "lpuName": "Тестовая поликлиника",
+            "toDoctor": {
+              "specialityId": 10,
+              "specialityName": "Врач-эндокринолог",
+              "receptionTypeId": 1891
+            },
+            "countActiveAppointment": 0,
+            "needPurpose": true,
+            "availableResourceId": null
+          },
+          {
+            "id": 900000000003,
+            "type": "REF_TO_DOCTOR",
+            "startTime": "2026-09-14",
+            "endTime": "2026-10-20",
+            "lpuId": 10000004,
+            "lpuName": "Тестовый диспансер",
+            "toDoctor": {
+              "specialityId": 11,
+              "specialityName": "Врач-невролог",
+              "doctorFio": "Петров П.П.",
+              "receptionTypeId": 1891
+            },
+            "countActiveAppointment": 0,
+            "needPurpose": false,
+            "availableResourceId": 200000005
+          },
+          {
+            "id": 900000000004,
+            "type": "REF_TO_LDP",
+            "startTime": "2026-09-14",
+            "endTime": "2026-10-05",
+            "lpuId": 10000002,
+            "lpuName": "Тестовая больница",
+            "toLdp": {
+              "ldpTypeId": 599930,
+              "ldpTypeName": "Электрокардиография"
+            },
+            "countActiveAppointment": 0
+          }
+        ]
+      },
+      "assignments": [
+        {
+          "moId": 10000001,
+          "moName": "Тестовая больница",
+          "toBM": {
+            "id": 1,
+            "name": "Взятие венозной крови"
+          },
+          "period": {
+            "dateFrom": "2026-09-14",
+            "dateTo": "2026-10-14"
+          },
+          "active": true,
+          "appointmentAvailable": true
+        }
+      ],
+      "count": 3
+    }
+  }
+}

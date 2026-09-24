@@ -1,0 +1,26 @@
+{
+  "payload": {
+    "availableResource": {
+      "id": 200000001,
+      "name": "Кабинет_1",
+      "complexResource": [
+        { "id": 300000001, "name": "1", "room": { "number": "1", "defaultAddress": "улица Тестовая, д. 2" } }
+      ]
+    },
+    "scheduleOfDay": [
+      {
+        "date": "2026-09-24",
+        "scheduleBySlot": [
+          {
+            "complexResourceId": 300000001,
+            "cabinetNumber": "1",
+            "slot": [
+              { "startTime": "2026-09-24T09:00:00+03:00", "endTime": "2026-09-24T09:15:00+03:00" },
+              { "startTime": "2026-09-24T10:00:00+03:00", "endTime": "2026-09-24T10:15:00+03:00" }
+            ]
+          }
+        ]
+      }
+    ]
+  }
+}

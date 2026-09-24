@@ -1,0 +1,21 @@
+{
+  "payload": {
+    "doctorsInfo": [
+      {
+        "lpuId": 10000001,
+        "lpuShortName": "Тестовая больница",
+        "defaultAddress": "улица Тестовая, д. 2",
+        "availableResources": [
+          {
+            "id": 200000001,
+            "name": "Кабинет_1",
+            "arType": 30,
+            "complexResource": [
+              { "id": 300000001, "name": "1" }
+            ]
+          }
+        ]
+      }
+    ]
+  }
+}

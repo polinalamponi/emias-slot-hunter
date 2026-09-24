@@ -1,0 +1,11 @@
+{
+  "name": "emias-slot-hunter",
+  "version": "0.1.0",
+  "private": false,
+  "license": "MIT",
+  "description": "Ловит освободившиеся слоты в ЕМИАС и записывает/переносит приёмы",
+  "scripts": {
+    "test": "node scripts/check-fixtures.js && node --test test/*.test.js",
+    "build": "node scripts/build.js"
+  }
+}

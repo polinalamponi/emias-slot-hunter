@@ -1,0 +1,51 @@
+{
+  "payload": {
+    "appointment": [
+      {
+        "id": 700000000001,
+        "startTime": "2026-09-30T13:45:00",
+        "endTime": "2026-09-30T14:00:00",
+        "type": "LDP",
+        "lpuId": 10000002,
+        "lpuAddress": "улица Тестовая, д. 1",
+        "enableShift": true,
+        "toLdp": {
+          "ldpTypeId": 599925,
+          "ldpTypeName": "Ультразвуковое исследование вен нижних конечностей"
+        },
+        "referral": {
+          "referralId": 900000000001
+        }
+      },
+      {
+        "id": 700000000002,
+        "startTime": "2026-09-25T12:50:00",
+        "endTime": "2026-09-25T13:05:00",
+        "type": "BM",
+        "lpuId": 10000001,
+        "lpuAddress": "улица Тестовая, д. 2",
+        "enableShift": true,
+        "toBM": {
+          "id": 1,
+          "name": "Взятие венозной крови"
+        }
+      },
+      {
+        "id": 700000000003,
+        "startTime": "2026-09-24T14:15:00",
+        "endTime": "2026-09-24T14:30:00",
+        "type": "DOCTOR",
+        "lpuId": 10000003,
+        "lpuAddress": "улица Тестовая, д. 3",
+        "enableShift": true,
+        "toDoctor": {
+          "specialityId": 10,
+          "specialityName": "Врач-эндокринолог"
+        },
+        "referral": {
+          "referralId": 900000000002
+        }
+      }
+    ]
+  }
+}

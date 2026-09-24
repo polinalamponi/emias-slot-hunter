@@ -1,0 +1,113 @@
+<!doctype html>
+<!--
+  docs/demo/index.html — демо для скриншотов в README. Подключает настоящий
+  собранный скрипт, но вместо ЕМИАС отвечает выдуманными данными. Никаких
+  запросов наружу страница не делает. Открыть: docs/demo/index.html в браузере.
+-->
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<title>ЕМИАС: охотник за слотами — демо</title>
+<style>
+  body { margin: 0; font: 15px/1.4 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; background: #f2f4f7; color: #1b1f24; }
+  .fake-site { max-width: 760px; margin: 0 auto; padding: 32px 24px; }
+  .fake-site h1 { font-size: 22px; margin: 0 0 8px; }
+  .fake-site p { color: #5b6573; margin: 0 0 20px; }
+  .fake-card { background: #fff; border-radius: 12px; padding: 16px 20px; margin-bottom: 12px; box-shadow: 0 1px 2px rgba(0,0,0,.06); }
+  .fake-card b { display: block; margin-bottom: 4px; }
+  .fake-card span { color: #5b6573; font-size: 14px; }
+</style>
+</head>
+<body>
+<div class="fake-site">
+  <h1>Демо: так скрипт выглядит на сайте ЕМИАС</h1>
+  <p>Все данные на этой странице выдуманные. Нажмите «🎯 Настроить» в правом нижнем углу.</p>
+  <div class="fake-card"><b>Мои направления</b><span>Анализ крови · ЭКГ · Врач-эндокринолог</span></div>
+  <div class="fake-card"><b>Мои записи</b><span>УЗИ вен нижних конечностей</span></div>
+</div>
+<script>
+(function () {
+  const pad = (n) => String(n).padStart(2, '0');
+  // Даты считаем от сегодняшнего дня, чтобы демо не «протухало».
+  const day = (plus) => { const d = new Date(Date.now() + plus * 86400000); return d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate()); };
+  const ADDR = 'улица Тестовая, д. 1, к. 2';
+
+  const referrals = { payload: { arInfo: {
+    referrals: { items: [
+      { id: 900000000004, type: 'REF_TO_LDP', startTime: day(-5), endTime: day(25), lpuId: 10000002, lpuName: 'Тестовая больница',
+        toLdp: { ldpTypeId: 599930, ldpTypeName: 'Электрокардиография' }, countActiveAppointment: 0 },
+      { id: 900000000002, type: 'REF_TO_DOCTOR', startTime: day(-5), endTime: day(20), lpuId: 10000003, lpuName: 'Тестовая поликлиника',
+        toDoctor: { specialityId: 10, specialityName: 'Врач-эндокринолог', receptionTypeId: 1891 },
+        countActiveAppointment: 0, needPurpose: true, availableResourceId: null },
+      { id: 900000000001, type: 'REF_TO_LDP', startTime: day(-5), endTime: day(25), lpuId: 10000002, lpuName: 'Тестовая больница',
+        toLdp: { ldpTypeId: 599925, ldpTypeName: 'УЗИ вен нижних конечностей' }, countActiveAppointment: 1 },
+    ] },
+    assignments: { count: 1, items: [
+      { active: true, appointmentAvailable: true, moId: 10000001, moName: 'Тестовая больница',
+        toBM: { id: 1, name: 'Взятие венозной крови' }, period: { dateFrom: day(-5), dateTo: day(14) } },
+    ] },
+  } } };
+
+  const appointments = { payload: { appointment: [
+    { id: 700000000001, startTime: day(9) + 'T13:45:00', endTime: day(9) + 'T14:00:00', type: 'LDP', lpuId: 10000002,
+      lpuAddress: ADDR, enableShift: true,
+      toLdp: { ldpTypeId: 599925, ldpTypeName: 'УЗИ вен нижних конечностей' }, referral: { referralId: 900000000001 } },
+  ] } };
+
+  const resources = { payload: { doctorsInfo: [ { lpuId: 10000002, lpuShortName: 'Тестовая больница', defaultAddress: ADDR,
+    availableResources: [ { id: 200000001, name: 'Кабинет_1', arType: 30, complexResource: [ { id: 300000001, name: '1' } ] } ] } ] } };
+
+  const schedule = { payload: {
+    availableResource: { id: 200000001, name: 'Кабинет_1',
+      complexResource: [ { id: 300000001, name: '1', room: { number: '1', defaultAddress: ADDR } } ] },
+    scheduleOfDay: [2, 3].map((plus) => ({ date: day(plus), scheduleBySlot: [ { complexResourceId: 300000001, cabinetNumber: '1',
+      slot: [ { startTime: day(plus) + 'T09:15:00+03:00', endTime: day(plus) + 'T09:30:00+03:00' },
+              { startTime: day(plus) + 'T11:30:00+03:00', endTime: day(plus) + 'T11:45:00+03:00' } ] } ] })),
+  } };
+
+  const reply = (json) => new Response(JSON.stringify(json), { status: 200, headers: { 'Content-Type': 'application/json' } });
+  const fakeFetch = async (url) => {
+    url = String(url);
+    if (url.includes('getAssignmentsReferralsInfo')) return reply(referrals);
+    if (url.includes('getAppointmentReceptionsByPatient')) return reply(appointments);
+    if (url.includes('getDoctorsInfo')) return reply(resources);
+    if (url.includes('getAvailableResourceScheduleInfo')) return reply(schedule);
+    if (url.includes('policy/list')) return reply({ payload: [] });
+    return reply({ payload: {} });
+  };
+
+  // Вход на «сайт»: выдуманный токен в отдельном хранилище, чтобы не трогать настоящее.
+  const mem = { 'persist:sessionAuth': JSON.stringify({ accessToken: '"demo"', refreshToken: '"demo"', idToken: 'null', ctime: JSON.stringify(new Date().toISOString()) }) };
+  const coreStorage = {
+    getItem: (k) => (k in mem ? mem[k] : null),
+    setItem: (k, v) => { mem[k] = String(v); },
+    removeItem: (k) => { delete mem[k]; },
+  };
+  try { localStorage.clear(); } catch (e) { /* демо работает и без localStorage */ }
+
+  // Подменяем create(): тот же настоящий core, но с выдуманными fetch/хранилищем
+  // и выдуманным пациентом (полис из нулей).
+  let real = {};
+  const demoIdentity = { oms: Array(16).fill('0').join(''), birth: '2000-01-01' };
+  const wrappedCreate = (opts) => {
+    const c = real.create({ ...opts, fetch: fakeFetch, storage: coreStorage });
+    const init = c.init.bind(c);
+    c.init = (o) => init({ ...(o || {}), identity: demoIdentity });
+    return c;
+  };
+  // Модули делают `EmiasCore = EmiasCore || {}` — это присвоит нам наш же
+  // прокси; его игнорируем, иначе create() вызовет сам себя.
+  const proxy = new Proxy({}, {
+    get: (t, k) => (k === 'create' ? wrappedCreate : real[k]),
+    set: (t, k, v) => { real[k] = v; return true; },
+  });
+  Object.defineProperty(globalThis, 'EmiasCore', {
+    configurable: true,
+    get() { return proxy; },
+    set(v) { if (v !== proxy) real = v; },
+  });
+})();
+</script>
+<script src="../../dist/emias-slot-hunter.user.js"></script>
+</body>
+</html>
