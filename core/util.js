@@ -2,7 +2,7 @@
 (function (root) {
   'use strict';
 
-  const VERSION = '0.1.1';
+  const VERSION = '0.1.2';
   const TZ = 'Europe/Moscow';
 
   function createUtil() {

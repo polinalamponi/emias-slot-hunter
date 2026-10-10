@@ -531,3 +531,49 @@ test('bookDoctor не считается переносом: isShift не под
   assert.equal('appointmentId' in api.calls[0].body, false);
   assert.equal('appointmentId' in api.calls[1].body, false);
 });
+
+// Живой баг: ЕМИАС при переносе выдаёт записи НОВЫЙ id (так и делал первый
+// консольный скрипт — искал перенесённую запись по времени и виду). Охотник
+// требовал прежний id, не узнавал свою запись и дальше переносил уже
+// отменённую — ЕМИАС отвечал SA_APPOINTMENT_CANNOT_BE_CANCELED.
+const shiftCand = { slot: { startTime: '2026-09-24T09:00:00+03:00', endTime: '2026-09-24T09:15:00+03:00' }, address: 'улица Тестовая, д. 2', resourceId: 200000001, complexResourceId: 300000001 };
+
+test('перенос приёма врача: запись с новым id засчитывается, и цель получает новый id', async () => {
+  const old = { id: 700000000040, startTime: '2026-10-19T08:30:00', lpuAddress: 'улица Тестовая, д. 2', toDoctor: { specialityName: 'Врач-акушер-гинеколог' } };
+  const moved = { id: 700000000041, startTime: '2026-09-24T09:00:00', lpuAddress: 'улица Тестовая, д. 2', toDoctor: { specialityName: 'Врач-акушер-гинеколог' } };
+  const api = fakeApi([['shiftAppointment', { ok: true, json: { payload: {} } }], ['getAppointmentReceptionsByPatient', { ok: true, json: { payload: { appointment: [moved] } } }]]);
+  const t = createTargets({ api, filters, util });
+  const target = { ...labTarget, scenario: 'shiftDoctor', current: '2026-10-19T08:30:00+03:00', source: { appointmentId: 700000000040, specialityName: 'Врач-акушер-гинеколог' } };
+  const r = await t.act(target, shiftCand, { now: NOW, appointments: [old] });
+  assert.equal(r.verified, true);
+  assert.equal(r.newAppointment.id, 700000000041);
+});
+
+test('перенос крови: запись с новым id засчитывается', async () => {
+  const old = { id: 700000000050, startTime: '2026-09-29T08:00:00', lpuAddress: 'улица Тестовая, д. 2', toBM: { id: 1, name: 'Кровь' } };
+  const moved = { id: 700000000051, startTime: '2026-09-24T09:00:00', lpuAddress: 'улица Тестовая, д. 2', toBM: { id: 1, name: 'Кровь' } };
+  const api = fakeApi([['shiftAppointment', { ok: true, json: { payload: {} } }], ['getAppointmentReceptionsByPatient', { ok: true, json: { payload: { appointment: [moved] } } }]]);
+  const t = createTargets({ api, filters, util });
+  const target = { ...labTarget, scenario: 'shiftLab', source: { appointmentId: 700000000050, moId: 10000001, samplingTypeId: 1 } };
+  const r = await t.act(target, shiftCand, { now: NOW, appointments: [old] });
+  assert.equal(r.verified, true);
+  assert.equal(r.newAppointment.id, 700000000051);
+});
+
+test('перенос: чужая запись, которая была и до переноса, не засчитывается как своя', async () => {
+  const other = { id: 700000000060, startTime: '2026-09-24T09:00:00', lpuAddress: 'улица Тестовая, д. 2', toDoctor: { specialityName: 'Врач-акушер-гинеколог' } };
+  const api = fakeApi([['shiftAppointment', { ok: true, json: { payload: {} } }], ['getAppointmentReceptionsByPatient', { ok: true, json: { payload: { appointment: [other] } } }]]);
+  const t = createTargets({ api, filters, util });
+  const target = { ...labTarget, scenario: 'shiftDoctor', source: { appointmentId: 700000000061, specialityName: 'Врач-акушер-гинеколог' } };
+  const r = await t.act(target, shiftCand, { now: NOW, appointments: [other] });
+  assert.equal(r.verified, false);
+});
+
+test('перенос приёма врача: запись к другому специалисту не засчитывается', async () => {
+  const moved = { id: 700000000071, startTime: '2026-09-24T09:00:00', lpuAddress: 'улица Тестовая, д. 2', toDoctor: { specialityName: 'Врач-терапевт участковый' } };
+  const api = fakeApi([['shiftAppointment', { ok: true, json: { payload: {} } }], ['getAppointmentReceptionsByPatient', { ok: true, json: { payload: { appointment: [moved] } } }]]);
+  const t = createTargets({ api, filters, util });
+  const target = { ...labTarget, scenario: 'shiftDoctor', source: { appointmentId: 700000000070, specialityName: 'Врач-акушер-гинеколог' } };
+  const r = await t.act(target, shiftCand, { now: NOW, appointments: [] });
+  assert.equal(r.verified, false);
+});

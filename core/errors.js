@@ -25,6 +25,9 @@
       SA_SAME_BM_IS_NOT_AVAILABLE: { message: 'Вы уже записаны на это исследование — перехожу в режим переноса.', action: 'switchToShift' },
       SA_REFERRAL_EXPIRED: { message: 'Направление истекло — цель отключена.', action: 'stopTarget' },
       SA_APPOINTMENT_NOT_FOUND: { message: 'Запись не найдена: возможно, её отменили или перенесли в другом месте.', action: 'stopTarget' },
+      // Живой ответ ЕМИАС и на перенос уже начавшейся записи, и на приём
+      // без направления (ЦЖЗ), который сайт этим путём переносить не даёт.
+      SA_APPOINTMENT_CANNOT_BE_CANCELED: { message: 'ЕМИАС не даёт перенести эту запись: приём уже начался, запись отменена или такой перенос сайт не разрешает. Цель остановлена.', action: 'stopTarget' },
     };
 
     function explain({ status, code, text }) {

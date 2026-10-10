@@ -184,8 +184,8 @@
     //  - адрес (кампус, без номера корпуса) должен совпасть с адресом кандидата;
     //  - для bookLab запись обязана получить НОВЫЙ id — ЕМИАС не присваивает новый id
     //    старой записи, поэтому id, уже бывший в списке ДО брони, не считается совпадением;
-    //  - для всех переносов ЕМИАС сохраняет id записи — сверяем его с appointmentId цели,
-    //    а не полагаемся только на время и тип;
+    //  - при переносе ЕМИАС выдаёт записи новый id, поэтому своей считаем запись с прежним
+    //    id или новую (её не было в списке до переноса), а не любую с тем же временем;
     //  - тип записи должен соответствовать сценарию (в т.ч. конкретный вид анализа для
     //    shiftLab и конкретный ldpTypeId для shiftLdp — иначе можно принять за свою запись
     //    чужой перенесённый анализ/исследование с тем же временем).
@@ -204,9 +204,15 @@
         if (beforeIds.has(appt.id)) return false;
         return !!appt.toLdp && Number(appt.toLdp.ldpTypeId) === Number(t.source.ldpTypeId);
       }
-      if (appt.id !== t.source.appointmentId) return false;
+      // Перенос: ЕМИАС выдаёт перенесённой записи новый id (проверено на живом
+      // сайте — и для крови, и для приёма врача). Поэтому своя запись — либо с
+      // прежним id, либо новая, которой не было в списке до переноса. Запись,
+      // которая уже была до переноса под другим id, — чужая.
+      if (appt.id !== t.source.appointmentId && beforeIds.has(appt.id)) return false;
       if (t.scenario === 'shiftLdp') return !!appt.toLdp && Number(appt.toLdp.ldpTypeId) === Number(t.source.ldpTypeId);
-      if (t.scenario === 'shiftDoctor') return !!appt.toDoctor;
+      if (t.scenario === 'shiftDoctor') {
+        return !!appt.toDoctor && (!t.source.specialityName || appt.toDoctor.specialityName === t.source.specialityName);
+      }
       if (t.scenario === 'shiftLab') return !!appt.toBM && Number(appt.toBM.id) === Number(t.source.samplingTypeId);
       return false;
     }

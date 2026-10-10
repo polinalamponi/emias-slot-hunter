@@ -86,3 +86,11 @@ test('Иванов Пётр без отчества НЕ маскируется'
   const masked = e.mask('врач Иванов Пётр рекомендует');
   assert.ok(masked.includes('Иванов Пётр'));
 });
+
+test('SA_APPOINTMENT_CANNOT_BE_CANCELED останавливает цель понятным сообщением, а не повторяется вечно', () => {
+  const { createErrors } = require('../core/errors.js');
+  const r = createErrors().explain({ status: 400, code: 'SA_APPOINTMENT_CANNOT_BE_CANCELED', text: '' });
+  assert.equal(r.action, 'stopTarget');
+  assert.match(r.message, /не даёт перенести/);
+  assert.doesNotMatch(r.message, /Непонятный/);
+});

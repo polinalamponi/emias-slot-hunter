@@ -226,6 +226,7 @@
       // !res.ok — смотрим на action.
       if (res.action === 'stopTarget') {
         state.byId[t.id] = { state: 'stopped', note: res.message };
+        emit('targetDone', { targetId: t.id, title: t.title, message: res.message });
       } else if (res.action === 'relogin') {
         emit('sessionLost', { message: res.message });
         return res;
@@ -318,6 +319,7 @@
               // кто следит только за событиями, должен узнать об остановке,
               // а не только по опросу status().
               emit('found', { targetId: t.id, warning: message, slot: null, address: null });
+              emit('targetDone', { targetId: t.id, title: t.title, message });
               continue;
             }
             if (r.action === 'relogin') {

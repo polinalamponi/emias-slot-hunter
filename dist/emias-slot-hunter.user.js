@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         ЕМИАС: охотник за слотами
 // @namespace    https://github.com/polinalamponi/emias-slot-hunter
-// @version      0.1.1
+// @version      0.1.2
 // @description  Следит за расписанием ЕМИАС и ловит освободившиеся слоты: записывает по направлению и переносит записи на более раннее время
 // @author       polinalamponi
 // @homepageURL  https://github.com/polinalamponi/emias-slot-hunter
@@ -21,7 +21,7 @@
 (function (root) {
   'use strict';
 
-  const VERSION = '0.1.1';
+  const VERSION = '0.1.2';
   const TZ = 'Europe/Moscow';
 
   function createUtil() {
@@ -73,6 +73,9 @@
       SA_SAME_BM_IS_NOT_AVAILABLE: { message: 'Вы уже записаны на это исследование — перехожу в режим переноса.', action: 'switchToShift' },
       SA_REFERRAL_EXPIRED: { message: 'Направление истекло — цель отключена.', action: 'stopTarget' },
       SA_APPOINTMENT_NOT_FOUND: { message: 'Запись не найдена: возможно, её отменили или перенесли в другом месте.', action: 'stopTarget' },
+      // Живой ответ ЕМИАС и на перенос уже начавшейся записи, и на приём
+      // без направления (ЦЖЗ), который сайт этим путём переносить не даёт.
+      SA_APPOINTMENT_CANNOT_BE_CANCELED: { message: 'ЕМИАС не даёт перенести эту запись: приём уже начался, запись отменена или такой перенос сайт не разрешает. Цель остановлена.', action: 'stopTarget' },
     };
 
     function explain({ status, code, text }) {
@@ -677,8 +680,8 @@
     //  - адрес (кампус, без номера корпуса) должен совпасть с адресом кандидата;
     //  - для bookLab запись обязана получить НОВЫЙ id — ЕМИАС не присваивает новый id
     //    старой записи, поэтому id, уже бывший в списке ДО брони, не считается совпадением;
-    //  - для всех переносов ЕМИАС сохраняет id записи — сверяем его с appointmentId цели,
-    //    а не полагаемся только на время и тип;
+    //  - при переносе ЕМИАС выдаёт записи новый id, поэтому своей считаем запись с прежним
+    //    id или новую (её не было в списке до переноса), а не любую с тем же временем;
     //  - тип записи должен соответствовать сценарию (в т.ч. конкретный вид анализа для
     //    shiftLab и конкретный ldpTypeId для shiftLdp — иначе можно принять за свою запись
     //    чужой перенесённый анализ/исследование с тем же временем).
@@ -697,9 +700,15 @@
         if (beforeIds.has(appt.id)) return false;
         return !!appt.toLdp && Number(appt.toLdp.ldpTypeId) === Number(t.source.ldpTypeId);
       }
-      if (appt.id !== t.source.appointmentId) return false;
+      // Перенос: ЕМИАС выдаёт перенесённой записи новый id (проверено на живом
+      // сайте — и для крови, и для приёма врача). Поэтому своя запись — либо с
+      // прежним id, либо новая, которой не было в списке до переноса. Запись,
+      // которая уже была до переноса под другим id, — чужая.
+      if (appt.id !== t.source.appointmentId && beforeIds.has(appt.id)) return false;
       if (t.scenario === 'shiftLdp') return !!appt.toLdp && Number(appt.toLdp.ldpTypeId) === Number(t.source.ldpTypeId);
-      if (t.scenario === 'shiftDoctor') return !!appt.toDoctor;
+      if (t.scenario === 'shiftDoctor') {
+        return !!appt.toDoctor && (!t.source.specialityName || appt.toDoctor.specialityName === t.source.specialityName);
+      }
       if (t.scenario === 'shiftLab') return !!appt.toBM && Number(appt.toBM.id) === Number(t.source.samplingTypeId);
       return false;
     }
@@ -1037,6 +1046,7 @@
       // !res.ok — смотрим на action.
       if (res.action === 'stopTarget') {
         state.byId[t.id] = { state: 'stopped', note: res.message };
+        emit('targetDone', { targetId: t.id, title: t.title, message: res.message });
       } else if (res.action === 'relogin') {
         emit('sessionLost', { message: res.message });
         return res;
@@ -1129,6 +1139,7 @@
               // кто следит только за событиями, должен узнать об остановке,
               // а не только по опросу status().
               emit('found', { targetId: t.id, warning: message, slot: null, address: null });
+              emit('targetDone', { targetId: t.id, title: t.title, message });
               continue;
             }
             if (r.action === 'relogin') {

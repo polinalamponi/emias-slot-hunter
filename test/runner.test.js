@@ -539,3 +539,13 @@ test('перенос: запись ещё далеко — поиск идёт �
   await h.runner.tick();
   assert.deepEqual(searched, ['appt:1']);
 });
+
+test('цель, остановленная ошибкой ЕМИАС (stopTarget), сообщает targetDone — обвязка может завершить поиск', async () => {
+  const h = harness({ search: async () => ({ candidates: [], rejected: [], notes: ['ЕМИАС не даёт перенести эту запись'], action: 'stopTarget' }) });
+  h.runner.setTargets([target]);
+  h.runner.confirmDryRun((await h.runner.dryRun()).id);
+  await h.runner.start();
+  await h.runner.tick();
+  assert.equal(h.runner.status().targets[0].state, 'stopped');
+  assert.ok(h.events.some((e) => e.type === 'targetDone' && e.payload.targetId === target.id));
+});
