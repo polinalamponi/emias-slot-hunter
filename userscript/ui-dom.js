@@ -206,7 +206,7 @@
       .esh-badge.k-paused { background: #8a6d3b; }
       .esh-badge.k-needLogin, .esh-badge.k-needIdentity, .esh-badge.k-sessionLost, .esh-badge.k-stale, .esh-badge.k-resumeError, .esh-badge.k-needDryRun { background: #d64545; }
       .esh-sub { display: block; font-size: 11px; opacity: .85; font-weight: normal; }
-      .esh-card { width: 320px; max-height: 70vh; overflow: auto; background: #fff; color: #222; border-radius: 12px; box-shadow: 0 4px 20px rgba(0,0,0,.3); padding: 14px; }
+      .esh-card { width: 320px; max-width: calc(100vw - 32px); box-sizing: border-box; max-height: 70vh; overflow: auto; background: #fff; color: #222; border-radius: 12px; box-shadow: 0 4px 20px rgba(0,0,0,.3); padding: 14px; }
       .esh-card h3 { margin: 0 0 8px; font-size: 16px; }
       .esh-card p { margin: 4px 0; font-size: 13px; line-height: 1.4; }
       .esh-row { display: flex; align-items: center; gap: 8px; margin: 6px 0; }
@@ -224,7 +224,9 @@
       .esh-btn.danger { background: #d64545; color: #fff; border-color: #d64545; }
       .esh-warn { color: #a33; font-size: 12px; }
       .esh-note { color: #666; font-size: 12px; }
-      .esh-confirm { width: 300px; background: #fff8ea; border: 1px solid #e0b84b; border-radius: 10px; padding: 10px; margin-bottom: 8px; box-shadow: 0 2px 10px rgba(0,0,0,.2); }
+      .esh-status-target { margin-bottom: 8px; }
+      .esh-status-target p { margin: 2px 0; }
+      .esh-confirm { width: 300px; max-width: calc(100vw - 32px); box-sizing: border-box; background: #fff8ea; border: 1px solid #e0b84b; border-radius: 10px; padding: 10px; margin-bottom: 8px; box-shadow: 0 2px 10px rgba(0,0,0,.2); }
       .esh-slept { width: 300px; background: #eef2ff; border: 1px solid #98a6e0; border-radius: 10px; padding: 10px; display: flex; justify-content: space-between; gap: 8px; }
       /* .esh-slept задаёт свой display: flex — этим он перебивает display:
          none из стандартного правила [hidden] (авторское правило с любым
@@ -414,7 +416,17 @@
   function renderStatusPanel() {
     const st = core.status();
     const waiting = new Set(st.pending);
-    const lines = st.targets.map((t) => h('p', { text: `${t.title}: ${waiting.has(t.id) ? 'жду вашего решения' : describeState(t)}` }));
+    // Под каждой целью — условия поиска теми же словами, что на шаге 3 мастера.
+    // Берём сохранённые цели: в них current уже обновлён после переноса.
+    const cfg = ui.loadConfig(storage);
+    const saved = new Map(((cfg && cfg.targets) || []).map((x) => [x.id, x]));
+    const lines = st.targets.map((t) => {
+      const conditions = saved.has(t.id) ? describeConditions(saved.get(t.id)) : '';
+      return h('div', { class: 'esh-status-target' }, [
+        h('p', { text: `${t.title}: ${waiting.has(t.id) ? 'жду вашего решения' : describeState(t)}` }),
+        conditions ? h('p', { class: 'esh-note', text: 'Условия: ' + conditions }) : null,
+      ]);
+    });
     // Панель перерисовывается целиком каждые 5 секунд (см. startStatusRefresh)
     // и на каждое новое событие лога — без этого позиция прокрутки в логе
     // сбрасывалась бы к началу при каждой перерисовке.
@@ -437,6 +449,13 @@
     if (t.state === 'done') return 'готово';
     if (t.state === 'improving') return 'записано, ищу вариант получше';
     return 'проверяю расписание';
+  }
+
+  // describeTarget начинает с «<название>: …» — название уже есть строкой выше.
+  function describeConditions(target) {
+    const text = ui.describeTarget(target);
+    const prefix = target.title + ': ';
+    return text.startsWith(prefix) ? text.slice(prefix.length) : text;
   }
 
   function openStatusPanel() { panelMode = 'status'; showPanel(); renderStatusPanel(); }
