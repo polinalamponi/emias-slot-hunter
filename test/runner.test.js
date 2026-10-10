@@ -507,3 +507,35 @@ test('M-1: lastCheckAt ставится только настоящей пров
   await h.runner.start();
   assert.equal(h.runner.status().lastCheckAt, 0);
 });
+
+// Живой баг: после переноса крови на воскресенье охотник продолжал «улучшать»
+// запись и после её начала, получая от ЕМИАС ошибку каждые 20 секунд.
+test('перенос: когда до текущей записи меньше minLeadMs, цель завершается без запросов к ЕМИАС', async () => {
+  const searched = [];
+  const h = harness({ search: async (t) => { searched.push(t.id); return { candidates: [], rejected: [], notes: [] }; } });
+  const soon = new Date(h.at() + 3600000).toISOString();
+  h.runner.setTargets([{ id: 'appt:1', scenario: 'shiftLab', title: 'Кровь', mode: 'auto', keepImproving: true,
+    current: soon, minLeadMs: 2 * 3600000, source: { appointmentId: 1, moId: 1, samplingTypeId: 1 } }]);
+  h.runner.confirmDryRun((await h.runner.dryRun()).id);
+  searched.length = 0;
+  await h.runner.start();
+  await h.runner.tick();
+  assert.deepEqual(searched, [], 'к ЕМИАС за расписанием не ходим');
+  const st = h.runner.status().targets[0];
+  assert.equal(st.state, 'done');
+  assert.match(st.note, /скоро|прош/);
+  assert.ok(h.events.some((e) => e.type === 'targetDone' && e.payload.targetId === 'appt:1'), 'обвязка узнаёт о завершении');
+});
+
+test('перенос: запись ещё далеко — поиск идёт как обычно', async () => {
+  const searched = [];
+  const h = harness({ search: async (t) => { searched.push(t.id); return { candidates: [], rejected: [], notes: [] }; } });
+  const later = new Date(h.at() + 10 * 3600000).toISOString();
+  h.runner.setTargets([{ id: 'appt:1', scenario: 'shiftLab', title: 'Кровь', mode: 'auto', keepImproving: true,
+    current: later, minLeadMs: 2 * 3600000, source: { appointmentId: 1, moId: 1, samplingTypeId: 1 } }]);
+  h.runner.confirmDryRun((await h.runner.dryRun()).id);
+  searched.length = 0;
+  await h.runner.start();
+  await h.runner.tick();
+  assert.deepEqual(searched, ['appt:1']);
+});

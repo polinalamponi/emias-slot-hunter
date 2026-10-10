@@ -115,7 +115,7 @@
     const filters = M.createFilters(util);
     const session = M.createSession({ storage, fetch, now });
     const api = M.createApi({ session, errors, fetch, now });
-    const discover = M.createDiscover({ api });
+    const discover = M.createDiscover({ api, today: () => util.mskDate(new Date(now())) });
     const targets = M.createTargets({ api, filters, util });
 
     // Простая шина событий: подписка по типу события ('log', 'found',

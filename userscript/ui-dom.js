@@ -46,7 +46,7 @@
   let statusRefreshId = null;
   let recoveryWatchId = null;
   let standbyRetryId = null;
-  let badgeRevertId = null;
+  let finishedAll = false; // все цели завершились сами — поиск остановлен
   let preBookedBadge = null; // значок до последнего «Записано», чтобы вернуть текст, а не только цвет
   // C-1: отпечаток подтверждённых целей, по которым работает ЭТА вкладка.
   // Работающая вкладка сверяет его с настройками (startStatusRefresh) —
@@ -285,7 +285,8 @@
     if (kind === 'needLogin' || kind === 'needIdentity') { retryLogin(); return; }
     if (kind === 'resumeError') { resumeIfEnabled(); return; }
     if (kind === 'standby') { openStandbyPanel(); return; }
-    if (kind === 'running' || kind === 'resuming' || kind === 'booked') { openStatusPanel(); return; }
+    if (kind === 'booked') { acknowledgeBooked(); openStatusPanel(); return; }
+    if (kind === 'running' || kind === 'resuming') { openStatusPanel(); return; }
     // needDryRun и любой прочий случай — безопаснее всего начать настройку заново.
     openWizardGuarded(1);
   }
@@ -376,7 +377,7 @@
       return;
     }
     if (r.status === 'started') {
-      setBadge({ kind: 'running', text: '🟢 Ищу слоты', detail: runningDetail() });
+      if (!showBookedBadge()) setBadge({ kind: 'running', text: '🟢 Ищу слоты', detail: runningDetail() });
       startStatusRefresh();
       if (standbyRetryId) { clearInterval(standbyRetryId); standbyRetryId = null; }
       hidePanel();
@@ -952,17 +953,49 @@
     // меняет только сами targets.
     const cfg = ui.loadConfig(storage);
     const nextCfg = ui.applyBookedUpdate(cfg, payload);
-    if (nextCfg !== cfg) ui.saveConfig(storage, nextCfg);
+    // lastBooked держит оранжевый значок, пока человек его не увидит (клик),
+    // в том числе после перезагрузки страницы.
+    if (nextCfg) ui.saveConfig(storage, { ...nextCfg, lastBooked: { title: payload.title, startTime: payload.slot.startTime, address: payload.address || null } });
     // Minor: раньше при возврате из «Записано» цвет менялся обратно, а текст
     // оставался старым («🟠 Записано: …») — запоминаем значок целиком (а не
     // только его kind), чтобы вернуть и текст тоже.
     if (badgeState.kind !== 'booked') preBookedBadge = { ...badgeState };
-    setBadge({ kind: 'booked', text: '🟠 Записано: ' + payload.title, detail: '' });
-    if (badgeRevertId) clearTimeout(badgeRevertId);
-    badgeRevertId = setTimeout(() => {
-      if (core.status().running) setBadge({ kind: 'running', text: '🟢 Ищу слоты', detail: runningDetail() });
-      else if (preBookedBadge) setBadge(preBookedBadge);
-    }, 8000);
+    if (!showBookedBadge()) setBadge({ kind: 'booked', text: '🟠 Записано: ' + payload.title, detail: '' });
+  }
+
+  // Раньше значок «Записано» через 8 секунд сам возвращался к «Ищу слоты», и
+  // если человек не смотрел на экран, о переносе он не узнавал. Теперь значок
+  // остаётся оранжевым, пока по нему не кликнут (и после перезагрузки тоже).
+  function showBookedBadge() {
+    const cfg = ui.loadConfig(storage);
+    const b = cfg && cfg.lastBooked;
+    if (!b) return false;
+    setBadge({ kind: 'booked', text: '🟠 Записано: ' + b.title, detail: b.startTime ? 'на ' + ui.human(b.startTime) + ' — нажмите, чтобы посмотреть' : '' });
+    return true;
+  }
+
+  function acknowledgeBooked() {
+    const cfg = ui.loadConfig(storage);
+    if (cfg && cfg.lastBooked) { const next = { ...cfg }; delete next.lastBooked; ui.saveConfig(storage, next); }
+    if (core.status().running) setBadge({ kind: 'running', text: '🟢 Ищу слоты', detail: runningDetail() });
+    else if (finishedAll) setBadge({ kind: 'idle', text: '✅ Готово', detail: 'все цели выполнены' });
+    else if (preBookedBadge) setBadge(preBookedBadge);
+  }
+
+  // Цель завершена сама (например, до записи осталось мало времени) — если
+  // так завершились все цели, поиск останавливаем: ходить в ЕМИАС незачем.
+  function onTargetDone(payload) {
+    pushLog({ at: Date.now(), msg: `${payload.title}: ${payload.message}` });
+    const all = core.status().targets || [];
+    if (!all.length || !all.every((t) => t.state === 'done' || t.state === 'stopped')) return;
+    core.stop();
+    runningFor = null;
+    stopStatusRefresh();
+    const cfg = ui.loadConfig(storage) || {};
+    ui.saveConfig(storage, { ...cfg, enabled: false });
+    finishedAll = true;
+    notify('ЕМИАС: поиск завершён', 'Все цели выполнены, охотник остановился');
+    if (!showBookedBadge()) setBadge({ kind: 'idle', text: '✅ Готово', detail: 'все цели выполнены' });
   }
 
   function onFound(payload) {
@@ -1016,6 +1049,7 @@
     core.on('log', safe(onLog));
     core.on('found', safe(onFound));
     core.on('booked', safe(onBooked));
+    core.on('targetDone', safe(onTargetDone));
     core.on('needConfirm', safe(onNeedConfirm));
     core.on('sessionLost', safe(onSessionLost));
     core.on('stale', safe(onStale));
@@ -1230,7 +1264,7 @@
     }
 
     if (r.status === 'started') {
-      setBadge({ kind: 'running', text: '🟢 Ищу слоты', detail: runningDetail() });
+      if (!showBookedBadge()) setBadge({ kind: 'running', text: '🟢 Ищу слоты', detail: runningDetail() });
       startStatusRefresh();
     } else if (r.status === 'mismatch') {
       showReconfirm(r.cfg, r.report);

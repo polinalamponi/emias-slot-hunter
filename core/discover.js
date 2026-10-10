@@ -1,7 +1,12 @@
 (function (root) {
   'use strict';
 
-  function createDiscover({ api }) {
+  // today() — сегодняшняя дата 'YYYY-MM-DD' по Москве; без неё срок
+  // направлений не проверяется.
+  function createDiscover({ api, today }) {
+    // Направление со сроком раньше сегодняшнего дня уже не даёт записаться.
+    const expired = (dateTo) => !!(today && dateTo && String(dateTo).slice(0, 10) < today());
+
     async function list() {
       const [refRes, apptRes] = await Promise.all([
         api.post('v4/saOrchestrator/getAssignmentsReferralsInfo', {}),
@@ -24,18 +29,24 @@
         const current = a.startTime ? (a.startTime + '+03:00') : null;
         const common = { current, address: a.lpuAddress || null, deadline: null, supported: !!a.enableShift,
           unsupportedReason: a.enableShift ? null : 'ЕМИАС не разрешает переносить эту запись' };
-        if (a.type === 'BM' && a.toBM) {
+        // Вид записи определяем по содержимому, а не по a.type: на живом сайте
+        // приём врача без направления пришёл с type не 'DOCTOR' и молча выпадал.
+        if (a.toBM) {
           out.push({ id: 'appt:' + a.id, scenario: 'shiftLab', title: a.toBM.name, ...common,
             source: { appointmentId: a.id, moId: a.lpuId, samplingTypeId: a.toBM.id } });
-        } else if (a.type === 'LDP' && a.toLdp) {
+        } else if (a.toLdp) {
           out.push({ id: 'appt:' + a.id, scenario: 'shiftLdp', title: a.toLdp.ldpTypeName, ...common,
             source: { appointmentId: a.id, ldpTypeId: Number(a.toLdp.ldpTypeId), referralId: a.referral && a.referral.referralId, lpuId: a.lpuId } });
-        } else if (a.type === 'DOCTOR' && a.toDoctor) {
-          // MINOR 5: добавлена проверка типа записи, как для других типов
+        } else if (a.toDoctor) {
           out.push({ id: 'appt:' + a.id, scenario: 'shiftDoctor', title: a.toDoctor.specialityName, ...common,
             source: { appointmentId: a.id, specialityName: a.toDoctor.specialityName, referralId: a.referral && a.referral.referralId, lpuId: a.lpuId } });
+        } else {
+          // Непонятную запись не прячем: человек должен видеть, что скрипт её
+          // заметил, но пока не умеет с ней работать.
+          out.push({ id: 'appt:' + a.id, scenario: 'unknownAppointment', title: 'Запись', ...common,
+            supported: false, unsupportedReason: 'Такую запись скрипт пока не умеет переносить',
+            source: { appointmentId: a.id } });
         }
-        // MINOR 5: остальные типы записей в v0.1 не поддерживаются, пропускаем молча
       }
 
       // Если есть свободные направления на кровь, предлагаем их как цели записи
@@ -45,6 +56,7 @@
       const assignments = Array.isArray(ar.assignments) ? ar.assignments : (ar.assignments && ar.assignments.items) || [];
       for (const as of assignments) {
         if (!as.active || !as.appointmentAvailable) continue;
+        if (expired(as.period && as.period.dateTo)) continue;
         const title = (as.toBM && as.toBM.name) || 'Лабораторное исследование';
         const labKey = `${as.moId}:${as.toBM && as.toBM.id}`;
         if (bookedLab.has(labKey)) continue;
@@ -59,6 +71,7 @@
       // bookDoctor и на живом сайте ещё не сняты.
       for (const ref of (ar.referrals && ar.referrals.items) || []) {
         if (ref.countActiveAppointment > 0) continue;
+        if (expired(ref.endTime)) continue;
         if (ref.toDoctor) {
           const title = ref.toDoctor.specialityName + (ref.toDoctor.doctorFio ? ' — ' + ref.toDoctor.doctorFio : '');
           out.push({ id: 'ref:' + ref.id, scenario: 'bookDoctor', title, current: null,

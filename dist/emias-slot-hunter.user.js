@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         ЕМИАС: охотник за слотами
 // @namespace    https://github.com/polinalamponi/emias-slot-hunter
-// @version      0.1.0
+// @version      0.1.1
 // @description  Следит за расписанием ЕМИАС и ловит освободившиеся слоты: записывает по направлению и переносит записи на более раннее время
 // @author       polinalamponi
 // @homepageURL  https://github.com/polinalamponi/emias-slot-hunter
@@ -21,7 +21,7 @@
 (function (root) {
   'use strict';
 
-  const VERSION = '0.1.0';
+  const VERSION = '0.1.1';
   const TZ = 'Europe/Moscow';
 
   function createUtil() {
@@ -385,7 +385,12 @@
 (function (root) {
   'use strict';
 
-  function createDiscover({ api }) {
+  // today() — сегодняшняя дата 'YYYY-MM-DD' по Москве; без неё срок
+  // направлений не проверяется.
+  function createDiscover({ api, today }) {
+    // Направление со сроком раньше сегодняшнего дня уже не даёт записаться.
+    const expired = (dateTo) => !!(today && dateTo && String(dateTo).slice(0, 10) < today());
+
     async function list() {
       const [refRes, apptRes] = await Promise.all([
         api.post('v4/saOrchestrator/getAssignmentsReferralsInfo', {}),
@@ -408,18 +413,24 @@
         const current = a.startTime ? (a.startTime + '+03:00') : null;
         const common = { current, address: a.lpuAddress || null, deadline: null, supported: !!a.enableShift,
           unsupportedReason: a.enableShift ? null : 'ЕМИАС не разрешает переносить эту запись' };
-        if (a.type === 'BM' && a.toBM) {
+        // Вид записи определяем по содержимому, а не по a.type: на живом сайте
+        // приём врача без направления пришёл с type не 'DOCTOR' и молча выпадал.
+        if (a.toBM) {
           out.push({ id: 'appt:' + a.id, scenario: 'shiftLab', title: a.toBM.name, ...common,
             source: { appointmentId: a.id, moId: a.lpuId, samplingTypeId: a.toBM.id } });
-        } else if (a.type === 'LDP' && a.toLdp) {
+        } else if (a.toLdp) {
           out.push({ id: 'appt:' + a.id, scenario: 'shiftLdp', title: a.toLdp.ldpTypeName, ...common,
             source: { appointmentId: a.id, ldpTypeId: Number(a.toLdp.ldpTypeId), referralId: a.referral && a.referral.referralId, lpuId: a.lpuId } });
-        } else if (a.type === 'DOCTOR' && a.toDoctor) {
-          // MINOR 5: добавлена проверка типа записи, как для других типов
+        } else if (a.toDoctor) {
           out.push({ id: 'appt:' + a.id, scenario: 'shiftDoctor', title: a.toDoctor.specialityName, ...common,
             source: { appointmentId: a.id, specialityName: a.toDoctor.specialityName, referralId: a.referral && a.referral.referralId, lpuId: a.lpuId } });
+        } else {
+          // Непонятную запись не прячем: человек должен видеть, что скрипт её
+          // заметил, но пока не умеет с ней работать.
+          out.push({ id: 'appt:' + a.id, scenario: 'unknownAppointment', title: 'Запись', ...common,
+            supported: false, unsupportedReason: 'Такую запись скрипт пока не умеет переносить',
+            source: { appointmentId: a.id } });
         }
-        // MINOR 5: остальные типы записей в v0.1 не поддерживаются, пропускаем молча
       }
 
       // Если есть свободные направления на кровь, предлагаем их как цели записи
@@ -429,6 +440,7 @@
       const assignments = Array.isArray(ar.assignments) ? ar.assignments : (ar.assignments && ar.assignments.items) || [];
       for (const as of assignments) {
         if (!as.active || !as.appointmentAvailable) continue;
+        if (expired(as.period && as.period.dateTo)) continue;
         const title = (as.toBM && as.toBM.name) || 'Лабораторное исследование';
         const labKey = `${as.moId}:${as.toBM && as.toBM.id}`;
         if (bookedLab.has(labKey)) continue;
@@ -443,6 +455,7 @@
       // bookDoctor и на живом сайте ещё не сняты.
       for (const ref of (ar.referrals && ar.referrals.items) || []) {
         if (ref.countActiveAppointment > 0) continue;
+        if (expired(ref.endTime)) continue;
         if (ref.toDoctor) {
           const title = ref.toDoctor.specialityName + (ref.toDoctor.doctorFio ? ' — ' + ref.toDoctor.doctorFio : '');
           out.push({ id: 'ref:' + ref.id, scenario: 'bookDoctor', title, current: null,
@@ -1097,6 +1110,16 @@
             if (st.state === 'done' || st.state === 'stopped') continue;
             if (state.pending[t.id]) continue; // ждём решения пользователя
 
+            // Текущая запись уже скоро (или прошла) — переносить её некуда:
+            // слоты раньше неё отсеет minLeadMs, а ЕМИАС на перенос начавшейся
+            // записи отвечает ошибкой. Завершаем цель, а не долбим сайт.
+            if (t.current && Date.parse(t.current) - now() < (t.minLeadMs || 0)) {
+              const message = `запись на ${String(t.current).slice(0, 16).replace('T', ' ')} уже скоро или прошла — больше не переношу`;
+              state.byId[t.id] = { state: 'done', note: message };
+              emit('targetDone', { targetId: t.id, title: t.title, message });
+              continue;
+            }
+
             const r = await targets.search(t, { now: now(), appointments: appts });
 
             if (r.action === 'stopTarget') {
@@ -1317,7 +1340,7 @@
     const filters = M.createFilters(util);
     const session = M.createSession({ storage, fetch, now });
     const api = M.createApi({ session, errors, fetch, now });
-    const discover = M.createDiscover({ api });
+    const discover = M.createDiscover({ api, today: () => util.mskDate(new Date(now())) });
     const targets = M.createTargets({ api, filters, util });
 
     // Простая шина событий: подписка по типу события ('log', 'found',
@@ -1721,7 +1744,7 @@
   let statusRefreshId = null;
   let recoveryWatchId = null;
   let standbyRetryId = null;
-  let badgeRevertId = null;
+  let finishedAll = false; // все цели завершились сами — поиск остановлен
   let preBookedBadge = null; // значок до последнего «Записано», чтобы вернуть текст, а не только цвет
   // C-1: отпечаток подтверждённых целей, по которым работает ЭТА вкладка.
   // Работающая вкладка сверяет его с настройками (startStatusRefresh) —
@@ -1960,7 +1983,8 @@
     if (kind === 'needLogin' || kind === 'needIdentity') { retryLogin(); return; }
     if (kind === 'resumeError') { resumeIfEnabled(); return; }
     if (kind === 'standby') { openStandbyPanel(); return; }
-    if (kind === 'running' || kind === 'resuming' || kind === 'booked') { openStatusPanel(); return; }
+    if (kind === 'booked') { acknowledgeBooked(); openStatusPanel(); return; }
+    if (kind === 'running' || kind === 'resuming') { openStatusPanel(); return; }
     // needDryRun и любой прочий случай — безопаснее всего начать настройку заново.
     openWizardGuarded(1);
   }
@@ -2051,7 +2075,7 @@
       return;
     }
     if (r.status === 'started') {
-      setBadge({ kind: 'running', text: '🟢 Ищу слоты', detail: runningDetail() });
+      if (!showBookedBadge()) setBadge({ kind: 'running', text: '🟢 Ищу слоты', detail: runningDetail() });
       startStatusRefresh();
       if (standbyRetryId) { clearInterval(standbyRetryId); standbyRetryId = null; }
       hidePanel();
@@ -2627,17 +2651,49 @@
     // меняет только сами targets.
     const cfg = ui.loadConfig(storage);
     const nextCfg = ui.applyBookedUpdate(cfg, payload);
-    if (nextCfg !== cfg) ui.saveConfig(storage, nextCfg);
+    // lastBooked держит оранжевый значок, пока человек его не увидит (клик),
+    // в том числе после перезагрузки страницы.
+    if (nextCfg) ui.saveConfig(storage, { ...nextCfg, lastBooked: { title: payload.title, startTime: payload.slot.startTime, address: payload.address || null } });
     // Minor: раньше при возврате из «Записано» цвет менялся обратно, а текст
     // оставался старым («🟠 Записано: …») — запоминаем значок целиком (а не
     // только его kind), чтобы вернуть и текст тоже.
     if (badgeState.kind !== 'booked') preBookedBadge = { ...badgeState };
-    setBadge({ kind: 'booked', text: '🟠 Записано: ' + payload.title, detail: '' });
-    if (badgeRevertId) clearTimeout(badgeRevertId);
-    badgeRevertId = setTimeout(() => {
-      if (core.status().running) setBadge({ kind: 'running', text: '🟢 Ищу слоты', detail: runningDetail() });
-      else if (preBookedBadge) setBadge(preBookedBadge);
-    }, 8000);
+    if (!showBookedBadge()) setBadge({ kind: 'booked', text: '🟠 Записано: ' + payload.title, detail: '' });
+  }
+
+  // Раньше значок «Записано» через 8 секунд сам возвращался к «Ищу слоты», и
+  // если человек не смотрел на экран, о переносе он не узнавал. Теперь значок
+  // остаётся оранжевым, пока по нему не кликнут (и после перезагрузки тоже).
+  function showBookedBadge() {
+    const cfg = ui.loadConfig(storage);
+    const b = cfg && cfg.lastBooked;
+    if (!b) return false;
+    setBadge({ kind: 'booked', text: '🟠 Записано: ' + b.title, detail: b.startTime ? 'на ' + ui.human(b.startTime) + ' — нажмите, чтобы посмотреть' : '' });
+    return true;
+  }
+
+  function acknowledgeBooked() {
+    const cfg = ui.loadConfig(storage);
+    if (cfg && cfg.lastBooked) { const next = { ...cfg }; delete next.lastBooked; ui.saveConfig(storage, next); }
+    if (core.status().running) setBadge({ kind: 'running', text: '🟢 Ищу слоты', detail: runningDetail() });
+    else if (finishedAll) setBadge({ kind: 'idle', text: '✅ Готово', detail: 'все цели выполнены' });
+    else if (preBookedBadge) setBadge(preBookedBadge);
+  }
+
+  // Цель завершена сама (например, до записи осталось мало времени) — если
+  // так завершились все цели, поиск останавливаем: ходить в ЕМИАС незачем.
+  function onTargetDone(payload) {
+    pushLog({ at: Date.now(), msg: `${payload.title}: ${payload.message}` });
+    const all = core.status().targets || [];
+    if (!all.length || !all.every((t) => t.state === 'done' || t.state === 'stopped')) return;
+    core.stop();
+    runningFor = null;
+    stopStatusRefresh();
+    const cfg = ui.loadConfig(storage) || {};
+    ui.saveConfig(storage, { ...cfg, enabled: false });
+    finishedAll = true;
+    notify('ЕМИАС: поиск завершён', 'Все цели выполнены, охотник остановился');
+    if (!showBookedBadge()) setBadge({ kind: 'idle', text: '✅ Готово', detail: 'все цели выполнены' });
   }
 
   function onFound(payload) {
@@ -2691,6 +2747,7 @@
     core.on('log', safe(onLog));
     core.on('found', safe(onFound));
     core.on('booked', safe(onBooked));
+    core.on('targetDone', safe(onTargetDone));
     core.on('needConfirm', safe(onNeedConfirm));
     core.on('sessionLost', safe(onSessionLost));
     core.on('stale', safe(onStale));
@@ -2905,7 +2962,7 @@
     }
 
     if (r.status === 'started') {
-      setBadge({ kind: 'running', text: '🟢 Ищу слоты', detail: runningDetail() });
+      if (!showBookedBadge()) setBadge({ kind: 'running', text: '🟢 Ищу слоты', detail: runningDetail() });
       startStatusRefresh();
     } else if (r.status === 'mismatch') {
       showReconfirm(r.cfg, r.report);

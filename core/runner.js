@@ -299,6 +299,16 @@
             if (st.state === 'done' || st.state === 'stopped') continue;
             if (state.pending[t.id]) continue; // ждём решения пользователя
 
+            // Текущая запись уже скоро (или прошла) — переносить её некуда:
+            // слоты раньше неё отсеет minLeadMs, а ЕМИАС на перенос начавшейся
+            // записи отвечает ошибкой. Завершаем цель, а не долбим сайт.
+            if (t.current && Date.parse(t.current) - now() < (t.minLeadMs || 0)) {
+              const message = `запись на ${String(t.current).slice(0, 16).replace('T', ' ')} уже скоро или прошла — больше не переношу`;
+              state.byId[t.id] = { state: 'done', note: message };
+              emit('targetDone', { targetId: t.id, title: t.title, message });
+              continue;
+            }
+
             const r = await targets.search(t, { now: now(), appointments: appts });
 
             if (r.action === 'stopTarget') {

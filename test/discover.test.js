@@ -210,3 +210,49 @@ test('api.post вернул ok: false без explained → Error с дефолт
     assert.match(e.message, /Не удалось получить данные/);
   }
 });
+
+// На живом сайте приём врача без направления (терапевт, гинеколог) не нашёлся
+// в мастере: тип записи у него, видимо, не 'DOCTOR'. Определяем вид записи по
+// содержимому (toDoctor/toLdp/toBM), а непонятную запись показываем серой.
+test('приём врача с другим type (или без type) всё равно становится целью переноса', async () => {
+  const appts = { payload: { appointment: [
+    { id: 700000000011, startTime: '2026-10-19T08:30:00', type: 'RECEPTION', lpuId: 10000003, lpuAddress: 'улица Тестовая, д. 3', enableShift: true,
+      toDoctor: { specialityId: 12, specialityName: 'Врач-акушер-гинеколог' } },
+    { id: 700000000012, startTime: '2026-10-16T11:45:00', lpuId: 10000003, lpuAddress: 'улица Тестовая, д. 3', enableShift: true,
+      toDoctor: { specialityId: 13, specialityName: 'Врач-терапевт участковый' } },
+  ] } };
+  const api2 = { post: async (p) => (p.includes('getAppointmentReceptionsByPatient') ? { ok: true, json: appts } : { ok: true, json: { payload: { arInfo: {} } } }) };
+  const list = await createDiscover({ api: api2 }).list();
+  const docs = list.filter((o) => o.scenario === 'shiftDoctor');
+  assert.deepEqual(docs.map((o) => o.title), ['Врач-акушер-гинеколог', 'Врач-терапевт участковый']);
+  assert.ok(docs.every((o) => o.supported));
+});
+
+test('запись непонятного вида не пропадает молча, а показывается неподдерживаемой', async () => {
+  const appts = { payload: { appointment: [
+    { id: 700000000013, startTime: '2026-10-20T10:00:00', type: 'SOMETHING_NEW', lpuId: 10000003, lpuAddress: 'улица Тестовая, д. 3', enableShift: true },
+  ] } };
+  const api2 = { post: async (p) => (p.includes('getAppointmentReceptionsByPatient') ? { ok: true, json: appts } : { ok: true, json: { payload: { arInfo: {} } } }) };
+  const list = await createDiscover({ api: api2 }).list();
+  const appt = list.find((o) => o.id === 'appt:700000000013');
+  assert.ok(appt, 'запись есть в списке');
+  assert.equal(appt.supported, false);
+  assert.equal(appt.current, '2026-10-20T10:00:00+03:00');
+  assert.match(appt.unsupportedReason, /пока не умеет/);
+});
+
+test('просроченные направления (на кровь и обычные) в мастер не попадают', async () => {
+  const ar = { payload: { arInfo: {
+    assignments: { items: [
+      { active: true, appointmentAvailable: true, moId: 1, moName: 'Тестовая больница', toBM: { id: 1, name: 'Кровь старая' }, period: { dateTo: '2026-09-24' } },
+      { active: true, appointmentAvailable: true, moId: 2, moName: 'Тестовая больница', toBM: { id: 2, name: 'Кровь свежая' }, period: { dateTo: '2026-10-20' } },
+    ] },
+    referrals: { items: [
+      { id: 900000000021, endTime: '2026-10-01', lpuId: 3, countActiveAppointment: 0, toLdp: { ldpTypeId: 1, ldpTypeName: 'УЗИ старое' } },
+      { id: 900000000022, endTime: '2026-10-10', lpuId: 3, countActiveAppointment: 0, toLdp: { ldpTypeId: 2, ldpTypeName: 'УЗИ до сегодня' } },
+    ] },
+  } } };
+  const api2 = { post: async (p) => (p.includes('getAssignmentsReferralsInfo') ? { ok: true, json: ar } : { ok: true, json: { payload: {} } }) };
+  const list = await createDiscover({ api: api2, today: () => '2026-10-10' }).list();
+  assert.deepEqual(list.map((o) => o.title).sort(), ['Кровь свежая', 'УЗИ до сегодня']);
+});

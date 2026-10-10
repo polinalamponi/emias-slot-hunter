@@ -1,6 +1,6 @@
 {
   "name": "emias-slot-hunter",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "private": false,
   "license": "MIT",
   "description": "Ловит освободившиеся слоты в ЕМИАС и записывает/переносит приёмы",
