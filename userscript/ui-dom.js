@@ -1003,6 +1003,15 @@
 
   // Цель завершена сама (например, до записи осталось мало времени) — если
   // так завершились все цели, поиск останавливаем: ходить в ЕМИАС незачем.
+  // Раннер перевёл цель новой записи в перенос уже существующей записи по
+  // направлению. Сохраняем новые поля так же, как после 'booked', но без
+  // уведомления «Записано»: записи в этот момент никто не делал.
+  function onTargetUpdated(payload) {
+    const cfg = ui.loadConfig(storage);
+    const nextCfg = ui.applyBookedUpdate(cfg, payload);
+    if (nextCfg !== cfg) ui.saveConfig(storage, nextCfg);
+  }
+
   function onTargetDone(payload) {
     pushLog({ at: Date.now(), msg: `${payload.title}: ${payload.message}` });
     const all = core.status().targets || [];
@@ -1068,6 +1077,7 @@
     core.on('log', safe(onLog));
     core.on('found', safe(onFound));
     core.on('booked', safe(onBooked));
+    core.on('targetUpdated', safe(onTargetUpdated));
     core.on('targetDone', safe(onTargetDone));
     core.on('needConfirm', safe(onNeedConfirm));
     core.on('sessionLost', safe(onSessionLost));

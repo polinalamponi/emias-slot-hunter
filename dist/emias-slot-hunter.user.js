@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         ЕМИАС: охотник за слотами
 // @namespace    https://github.com/polinalamponi/emias-slot-hunter
-// @version      0.1.3
+// @version      0.1.4
 // @description  Следит за расписанием ЕМИАС и ловит освободившиеся слоты: записывает по направлению и переносит записи на более раннее время
 // @author       polinalamponi
 // @homepageURL  https://github.com/polinalamponi/emias-slot-hunter
@@ -21,7 +21,7 @@
 (function (root) {
   'use strict';
 
-  const VERSION = '0.1.3';
+  const VERSION = '0.1.4';
   const TZ = 'Europe/Moscow';
 
   function createUtil() {
@@ -897,6 +897,60 @@
       return (r.json && r.json.payload && r.json.payload.appointment) || [];
     }
 
+    // Запись, которая уже есть по направлению цели новой записи (bookLab,
+    // bookDoctor, bookLdp). Кровь узнаём по МО и виду анализа (у таких
+    // назначений нет номера направления), врача и исследование — по номеру
+    // направления в самой записи.
+    function existingAppointment(t, appts) {
+      const s = t.source || {};
+      if (t.scenario === 'bookLab') {
+        return appts.find((a) => a.toBM && Number(a.toBM.id) === Number(s.samplingTypeId) && String(a.lpuId) === String(s.moId)) || null;
+      }
+      if (t.scenario === 'bookDoctor' || t.scenario === 'bookLdp') {
+        if (s.referralId == null) return null;
+        const kind = t.scenario === 'bookDoctor' ? 'toDoctor' : 'toLdp';
+        return appts.find((a) => a[kind] && a.referral && String(a.referral.referralId) === String(s.referralId)) || null;
+      }
+      return null;
+    }
+
+    // Перед поиском сверяем цель новой записи со списком записей: если по
+    // направлению запись уже есть (была при старте, охотник поймал её, но
+    // ответ потерялся, или человек записался сам), цель становится переносом
+    // этой записи и дальше ищет слот раньше неё. Без этого охотник продолжал
+    // искать новую запись по уже занятому направлению и получал от ЕМИАС
+    // ошибку на каждой проверке. Возвращает true, если цель изменилась.
+    function adoptExisting(t, appts) {
+      const a = existingAppointment(t, appts);
+      if (!a || !a.startTime) return false;
+      const when = a.startTime.slice(0, 16).replace('T', ' ');
+      if (t.keepImproving === false) {
+        const message = `по направлению уже есть запись на ${when}`;
+        state.byId[t.id] = { state: 'done', note: message };
+        emit('targetDone', { targetId: t.id, title: t.title, message });
+        return true;
+      }
+      t.current = a.startTime + '+03:00';
+      if (t.scenario === 'bookDoctor') {
+        t.source = {
+          ...t.source, appointmentId: a.id, lpuId: a.lpuId || t.source.lpuId,
+          specialityName: (a.toDoctor && a.toDoctor.specialityName) || t.title,
+        };
+        t.scenario = 'shiftDoctor';
+      } else if (t.scenario === 'bookLdp') {
+        t.source = { ...t.source, appointmentId: a.id, lpuId: a.lpuId || t.source.lpuId };
+        t.scenario = 'shiftLdp';
+      } else {
+        t.source = { ...t.source, appointmentId: a.id, moId: a.lpuId || t.source.moId };
+        t.scenario = 'shiftLab';
+      }
+      log(`${t.title}: по направлению уже есть запись на ${when} — ищу слот раньше и переношу`);
+      // Обвязка сохраняет цели отдельно (см. C1 в finish()), поэтому новые
+      // current/source/scenario отдаём событием, как и после своей записи.
+      emit('targetUpdated', { targetId: t.id, title: t.title, current: t.current, source: t.source, scenario: t.scenario });
+      return true;
+    }
+
     function buildWarnings(t, best, r, appts) {
       const w = [];
       if (best && t.addressContains && !best.address.toLowerCase().includes(String(t.addressContains).toLowerCase())) {
@@ -921,6 +975,11 @@
       const appts = await appointments();
       const items = [];
       for (const t of state.list) {
+        adoptExisting(t, appts);
+        if (state.byId[t.id].state === 'done') {
+          items.push({ targetId: t.id, title: t.title, would: null, waiting: false, warnings: [], notes: [state.byId[t.id].note] });
+          continue;
+        }
         let r;
         try {
           r = await targets.search(t, { now: now(), appointments: appts });
@@ -1119,6 +1178,11 @@
             // цель не пропускаем, в отличие от 'done' и 'stopped'.
             if (st.state === 'done' || st.state === 'stopped') continue;
             if (state.pending[t.id]) continue; // ждём решения пользователя
+
+            // Запись по направлению могла появиться во время работы (в том
+            // числе руками на сайте) — тогда переходим в перенос, а не ищем
+            // новую запись по занятому направлению.
+            if (adoptExisting(t, appts) && state.byId[t.id].state === 'done') continue;
 
             // Текущая запись уже скоро (или прошла) — переносить её некуда:
             // слоты раньше неё отсеет minLeadMs, а ЕМИАС на перенос начавшейся
@@ -2712,6 +2776,15 @@
 
   // Цель завершена сама (например, до записи осталось мало времени) — если
   // так завершились все цели, поиск останавливаем: ходить в ЕМИАС незачем.
+  // Раннер перевёл цель новой записи в перенос уже существующей записи по
+  // направлению. Сохраняем новые поля так же, как после 'booked', но без
+  // уведомления «Записано»: записи в этот момент никто не делал.
+  function onTargetUpdated(payload) {
+    const cfg = ui.loadConfig(storage);
+    const nextCfg = ui.applyBookedUpdate(cfg, payload);
+    if (nextCfg !== cfg) ui.saveConfig(storage, nextCfg);
+  }
+
   function onTargetDone(payload) {
     pushLog({ at: Date.now(), msg: `${payload.title}: ${payload.message}` });
     const all = core.status().targets || [];
@@ -2777,6 +2850,7 @@
     core.on('log', safe(onLog));
     core.on('found', safe(onFound));
     core.on('booked', safe(onBooked));
+    core.on('targetUpdated', safe(onTargetUpdated));
     core.on('targetDone', safe(onTargetDone));
     core.on('needConfirm', safe(onNeedConfirm));
     core.on('sessionLost', safe(onSessionLost));

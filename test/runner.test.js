@@ -549,3 +549,72 @@ test('цель, остановленная ошибкой ЕМИАС (stopTarget
   assert.equal(h.runner.status().targets[0].state, 'stopped');
   assert.ok(h.events.some((e) => e.type === 'targetDone' && e.payload.targetId === target.id));
 });
+
+// Статус направления перед поиском: нет записи — новая запись; есть — перенос
+// раньше неё; появилась во время работы — переход в перенос без ошибки.
+const ldpTarget = { id: 'uzi', scenario: 'bookLdp', title: 'УЗИ', mode: 'auto', keepImproving: true, source: { referralId: 555, lpuId: 7, ldpTypeId: 100001 } };
+const ldpAppt = { id: 9001, startTime: '2026-11-20T10:00:00', lpuId: 7, lpuAddress: 'улица Тестовая, д. 2', toLdp: { ldpTypeId: '100001', ldpTypeName: 'УЗИ' }, referral: { referralId: 555 } };
+
+function statusHarness(apptsRef) {
+  const seen = [];
+  const h = harness({
+    apiPost: async () => ({ ok: true, json: { payload: { appointment: apptsRef.list } } }),
+    search: async (t) => { seen.push({ scenario: t.scenario, current: t.current, appointmentId: t.source.appointmentId }); return { candidates: [], rejected: [], notes: [] }; },
+  });
+  return { ...h, seen };
+}
+
+test('направление без записи: ищет новую запись', async () => {
+  const appts = { list: [] };
+  const h = statusHarness(appts);
+  h.runner.setTargets([ldpTarget]);
+  h.runner.confirmDryRun((await h.runner.dryRun()).id);
+  await h.runner.start();
+  await h.runner.tick();
+  assert.deepEqual(h.seen.map((s) => s.scenario), ['bookLdp', 'bookLdp']);
+  assert.ok(!h.events.some((e) => e.type === 'targetUpdated'));
+});
+
+test('по направлению уже есть запись: ищет раньше неё в режиме переноса', async () => {
+  const appts = { list: [ldpAppt] };
+  const h = statusHarness(appts);
+  h.runner.setTargets([ldpTarget]);
+  h.runner.confirmDryRun((await h.runner.dryRun()).id);
+  await h.runner.start();
+  await h.runner.tick();
+  for (const s of h.seen) {
+    assert.equal(s.scenario, 'shiftLdp');
+    assert.equal(s.current, '2026-11-20T10:00:00+03:00');
+    assert.equal(s.appointmentId, 9001);
+  }
+  const upd = h.events.filter((e) => e.type === 'targetUpdated');
+  assert.equal(upd.length, 1);
+  assert.equal(upd[0].payload.scenario, 'shiftLdp');
+  assert.equal(upd[0].payload.source.referralId, 555);
+  assert.equal(h.runner.status().running, true);
+});
+
+test('запись появилась во время работы: без ошибки переходит в перенос', async () => {
+  const appts = { list: [] };
+  const h = statusHarness(appts);
+  h.runner.setTargets([ldpTarget]);
+  h.runner.confirmDryRun((await h.runner.dryRun()).id);
+  await h.runner.start();
+  await h.runner.tick();
+  appts.list = [ldpAppt]; // записались руками на сайте
+  h.advance(20000);
+  await h.runner.tick();
+  assert.deepEqual(h.seen.map((s) => s.scenario), ['bookLdp', 'bookLdp', 'shiftLdp']);
+  assert.ok(!h.events.some((e) => e.type === 'needDryRun' || e.type === 'targetDone'));
+  assert.ok(!h.events.some((e) => e.type === 'log' && /сбой/.test(e.payload.msg)));
+  assert.equal(h.runner.status().targets[0].current, '2026-11-20T10:00:00+03:00');
+});
+
+test('запись на анализ по назначению узнаётся по МО и виду анализа', async () => {
+  const appts = { list: [{ id: 77, startTime: '2026-11-12T08:00:00', lpuId: 1, toBM: { id: 1, name: 'Кровь' } }] };
+  const h = statusHarness(appts);
+  h.runner.setTargets([{ ...target, keepImproving: true }]);
+  await h.runner.dryRun();
+  assert.equal(h.seen[0].scenario, 'shiftLab');
+  assert.equal(h.seen[0].appointmentId, 77);
+});
