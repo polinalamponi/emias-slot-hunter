@@ -581,7 +581,7 @@
     return h('div', {}, [h('label', { class: 'esh-field', text: 'Цель визита' }), group]);
   }
 
-  function whenField(option, form, update) {
+  function whenField(option, form, update, quiet) {
     const opts = [
       ['earlier', option.current ? 'раньше, чем сейчас записано' : 'как можно раньше'],
       ...(option.current ? [['sameDayEarlier', 'в тот же день, но раньше']] : []),
@@ -592,12 +592,12 @@
       h('span', { text }),
     ])));
     const dayInput = form.when === 'onlyDay' ? h('input', {
-      type: 'date', value: form.day, onchange: (e) => update({ day: e.target.value }),
+      type: 'date', value: form.day, onchange: (e) => quiet({ day: e.target.value }),
     }) : null;
     return h('div', {}, [group, dayInput]);
   }
 
-  function whereField(option, form, update) {
+  function whereField(option, form, update, quiet) {
     const opts = [
       ...(option.address ? [['sameCampus', 'в этом же здании']] : []),
       ['any', 'где угодно'],
@@ -609,16 +609,18 @@
     ])));
     const addrInput = form.where === 'contains' ? h('input', {
       type: 'text', value: form.addressContains, placeholder: 'например, Ленина',
-      onchange: (e) => update({ addressContains: e.target.value }),
+      oninput: (e) => quiet({ addressContains: e.target.value }),
     }) : null;
     return h('div', {}, [group, addrInput]);
   }
 
-  function advancedFields(form, update) {
+  function advancedFields(form, quiet) {
     const field = (label, type, key) => h('label', { class: 'esh-field' }, [
-      label, h('input', { type, value: form[key], onchange: (e) => update({ [key]: e.target.value }) }),
+      label, h('input', { type, value: form[key], onchange: (e) => quiet({ [key]: e.target.value }) }),
     ]);
-    return h('details', { class: 'esh-more' }, [
+    // Раскрыт ли блок, помним в форме: шаг перерисовывается при выборе любого
+    // переключателя, и без этого блок каждый раз схлопывался заново.
+    return h('details', { class: 'esh-more', open: !!form.moreOpen, ontoggle: (e) => { form.moreOpen = e.target.open; } }, [
       h('summary', { text: 'Дополнительно: даты и время' }),
       field('Не раньше какого дня', 'date', 'dateFrom'),
       field('Не позже какого дня', 'date', 'dateTo'),
@@ -630,12 +632,17 @@
   function renderTargetCard(option) {
     const form = ensureForm(option);
     const update = (patch) => { Object.assign(form, patch); renderStep2(wizard.selected); };
+    // Поля ввода (даты, время, адрес) меняют форму без перерисовки шага.
+    // Браузер шлёт change у поля даты уже на первой цифре года («0002»), и
+    // перерисовка подставляла этот год в новое поле и уводила курсор, так что
+    // год с клавиатуры было не набрать. Обновляем только ошибку и «Далее».
+    const quiet = (patch) => { Object.assign(form, patch); refreshStepTwoState(); };
     const card = h('div', { class: 'esh-opt' });
     card.appendChild(h('div', { class: 'title', text: option.title }));
     card.appendChild(h('label', { class: 'esh-field', text: 'Когда' }));
-    card.appendChild(whenField(option, form, update));
+    card.appendChild(whenField(option, form, update, quiet));
     card.appendChild(h('label', { class: 'esh-field', text: 'Где' }));
-    card.appendChild(whereField(option, form, update));
+    card.appendChild(whereField(option, form, update, quiet));
     const purpose = purposeField(option, form, update);
     if (purpose) card.appendChild(purpose);
     card.appendChild(h('label', { class: 'esh-row' }, [
@@ -653,9 +660,11 @@
         h('span', { text: 'сначала спрашивать' }),
       ]),
     ]));
-    card.appendChild(advancedFields(form, update));
+    card.appendChild(advancedFields(form, quiet));
     const error = stepTwoError(option, form);
-    if (error) card.appendChild(h('p', { class: 'esh-warn', text: error }));
+    const errorEl = h('p', { class: 'esh-warn', text: error || '', hidden: !error });
+    errorEl.dataset.optionId = option.id;
+    card.appendChild(errorEl);
     return card;
   }
 
@@ -683,7 +692,21 @@
     const hasErrors = selected.some((o) => stepTwoError(o, ensureForm(o)));
     const back = h('button', { class: 'esh-btn', text: 'Назад', onclick: backToStep1 });
     const next = h('button', { class: 'esh-btn primary', text: 'Далее', disabled: hasErrors, onclick: () => openWizard(3) });
+    next.dataset.role = 'step2-next';
     dom.panel.appendChild(h('div', { class: 'esh-btns' }, [back, next]));
+  }
+
+  // Обновляет ошибки карточек и кнопку «Далее» на шаге 2 без перерисовки.
+  function refreshStepTwoState() {
+    let hasErrors = false;
+    for (const o of wizard.selected) {
+      const error = stepTwoError(o, ensureForm(o));
+      if (error) hasErrors = true;
+      const el = [...dom.panel.querySelectorAll('p.esh-warn')].find((p) => p.dataset.optionId === String(o.id));
+      if (el) { el.textContent = error || ''; el.hidden = !error; }
+    }
+    const next = dom.panel.querySelector('[data-role="step2-next"]');
+    if (next) next.disabled = hasErrors;
   }
 
   /* ==================== шаг 3: холостой прогон и запуск ==================== */
