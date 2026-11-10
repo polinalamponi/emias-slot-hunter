@@ -10,11 +10,15 @@
 
 ## Установка в два клика
 
-**1. [Поставить Tampermonkey](https://chromewebstore.google.com/detail/tampermonkey/dhdgffkkebhmkfjojejmpbldmpobfkfo)** — расширение,
-которое запускает скрипт. Для Firefox, Safari и других браузеров — [здесь](https://www.tampermonkey.net/).
+**1. Поставьте расширение Tampermonkey.** Оно запускает скрипт. Расширение одно и то же,
+ссылка зависит от вашего браузера:
 
-**2. [Установить охотника](https://raw.githubusercontent.com/polinalamponi/emias-slot-hunter/main/dist/emias-slot-hunter.user.js)** —
-откроется страница Tampermonkey, нажмите там «Установить».
+- Chrome, Яндекс Браузер, Edge, Arc — **[Tampermonkey из магазина Chrome](https://chromewebstore.google.com/detail/tampermonkey/dhdgffkkebhmkfjojejmpbldmpobfkfo)**
+- Firefox — **[Tampermonkey для Firefox](https://addons.mozilla.org/firefox/addon/tampermonkey/)**
+- Safari — **[Tampermonkey для Safari](https://www.tampermonkey.net/?browser=safari)** (в App Store он платный)
+
+**2. Установите охотника: [нажмите сюда](https://raw.githubusercontent.com/polinalamponi/emias-slot-hunter/main/dist/emias-slot-hunter.user.js).**
+Откроется страница Tampermonkey, нажмите там «Установить».
 
 Готово. Откройте [emias.info](https://emias.info), войдите, и в правом нижнем углу появится
 кнопка «🎯 Настроить». Обновления скрипт подтягивает сам.
