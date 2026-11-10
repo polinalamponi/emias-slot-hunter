@@ -13,7 +13,7 @@
 **1. Поставьте расширение Tampermonkey.** Оно запускает скрипт. Расширение одно и то же,
 ссылка зависит от вашего браузера:
 
-- Chrome, Яндекс Браузер, Edge, Arc — **[Tampermonkey из магазина Chrome](https://chromewebstore.google.com/detail/tampermonkey/dhdgffkkebhmkfjojejmpbldmpobfkfo)**
+- Chrome, Яндекс Браузер, Edge, Arc, Aside — **[Tampermonkey из магазина Chrome](https://chromewebstore.google.com/detail/tampermonkey/dhdgffkkebhmkfjojejmpbldmpobfkfo)**
 - Firefox — **[Tampermonkey для Firefox](https://addons.mozilla.org/firefox/addon/tampermonkey/)**
 - Safari — **[Tampermonkey для Safari](https://www.tampermonkey.net/?browser=safari)** (в App Store он платный)
 
@@ -23,7 +23,7 @@
 Готово. Откройте [emias.info](https://emias.info), войдите, и в правом нижнем углу появится
 кнопка «🎯 Настроить». Обновления скрипт подтягивает сам.
 
-> **Кнопка не появилась?** В Chrome, Яндекс Браузере, Edge и Arc расширению нужно одно
+> **Кнопка не появилась?** В Chrome, Яндекс Браузере, Edge, Arc и Aside расширению нужно одно
 > разрешение: `chrome://extensions` → Tampermonkey → «Сведения» → включить «Разрешить
 > пользовательские скрипты», затем перезапустить браузер. Подробнее — в разделе
 > [Установка](#установка).
