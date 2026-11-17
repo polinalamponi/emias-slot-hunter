@@ -848,6 +848,7 @@
     const where = payload.address ? ` — ${ui.stripCampus(payload.address)}` : '';
     notify('ЕМИАС: нужно решение', `${payload.title}: ${ui.human(payload.slot.startTime)}${where} — 60 секунд на ответ`);
     const targetId = payload.targetId;
+    removeConfirmCard(targetId);
     const tickId = setInterval(() => {
       const p = pendingConfirms[targetId];
       if (!p || Date.now() >= p.expiresAt) { removeConfirmCard(targetId); return; }
@@ -886,12 +887,14 @@
     const title = titleFor(targetId);
     const bookDecision = decision === 'book';
     const p = pendingConfirms[targetId];
-    const node = p && p.node;
-    // Отвязываем карточку от отсчёта, но сам элемент пока оставляем на месте.
-    if (p) { clearInterval(p.tickId); delete pendingConfirms[targetId]; }
+    if (!p || p.busy) return;
+    const node = p.node;
+    // Пока ждём ответ, stop()/standby всё ещё могут убрать эту карточку.
+    clearInterval(p.tickId);
+    p.busy = true;
     const dropNode = () => { if (node && node.parentNode) node.parentNode.removeChild(node); };
     if (!bookDecision) {
-      dropNode();
+      removeConfirmCard(targetId);
       try { await core.answer(targetId, 'skip'); } catch (e) { /* пропуск ничего не отправляет */ }
       return;
     }
@@ -899,16 +902,20 @@
     const foundBefore = foundCount[targetId] || 0;
     let failText = null;
     let alreadyLogged = false;
+    let cancelled = false;
     try {
       const res = await core.answer(targetId, 'book');
-      if (!res || !res.ok || !res.verified) {
+      cancelled = !!(res && res.cancelled);
+      if (!cancelled && (!res || !res.ok || !res.verified)) {
         failText = (res && res.message) || 'слот уже не актуален';
         alreadyLogged = (foundCount[targetId] || 0) > foundBefore;
       }
     } catch (e) {
       failText = (e && e.message) || 'неизвестная ошибка';
     }
-    if (!failText) { dropNode(); return; }
+    if (pendingConfirms[targetId] !== p) return;
+    delete pendingConfirms[targetId];
+    if (cancelled || !failText) { dropNode(); return; }
     const text = `${title}: записать не удалось — ${failText}`;
     if (!alreadyLogged) pushLog({ at: Date.now(), msg: text });
     if (node) {

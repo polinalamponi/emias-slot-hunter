@@ -308,7 +308,10 @@
     // Общая часть post() и get(): заголовки, сетевой бэкофф, продление сессии
     // по 401, разбор ответа. body === undefined → запрос без тела (GET), с
     // телом → Content-Type и JSON.stringify (POST).
-    async function request(method, path, body, retried) {
+    async function request(method, path, body, retried, canContinue) {
+      if (canContinue && !canContinue()) {
+        return { ok: false, cancelled: true, status: 0, json: null, explained: null };
+      }
       let r;
       try {
         const headers = { Accept: 'application/json', 'EI-Token': session.token(), 'X-App': 'portal' };
@@ -333,7 +336,10 @@
 
       // 401: пытаемся один раз продлить сессию и повторить запрос
       if (r.status === 401 && !retried) {
-        if (await session.refresh()) return request(method, path, body, true);
+        if (canContinue && !canContinue()) {
+          return { ok: false, cancelled: true, status: r.status, json, explained: null };
+        }
+        if (await session.refresh()) return request(method, path, body, true, canContinue);
       }
       // Повторный 401 — сессия не продлевается. Текст этого сообщения попадает
       // пользователю на глаза как есть (userscript/ui-dom.js onSessionLost
@@ -363,9 +369,9 @@
       };
     }
 
-    function post(path, body, retried) {
+    function post(path, body, retried, canContinue) {
       const id = session.identity();
-      return request('POST', path, { omsNumber: id.oms, birthDate: id.birth, ...body }, retried);
+      return request('POST', path, { omsNumber: id.oms, birthDate: id.birth, ...body }, retried, canContinue);
     }
 
     // GET без тела и без omsNumber/birthDate — используется до того, как
@@ -733,6 +739,9 @@
     }
 
     async function act(t, cand, ctx) {
+      // Проверка относится к каждой отправке, включая повтор с referralId
+      // и повтор после обновления токена внутри api.post().
+      const post = (path, body) => api.post(path, body, false, ctx.canContinue);
       const base = {
         availableResourceId: cand.resourceId, complexResourceId: cand.complexResourceId,
         startTime: cand.slot.startTime, endTime: cand.slot.endTime,
@@ -740,7 +749,7 @@
       let res;
       switch (t.scenario) {
         case 'bookLab': {
-          res = await api.post('v4/saOrchestrator/createAppointment', base);
+          res = await post('v4/saOrchestrator/createAppointment', base);
           break;
         }
         case 'bookDoctor': {
@@ -752,31 +761,33 @@
             body.inquiryPurposeId = t.purpose.inquiryPurposeId;
             body.inquiryPurposeCode = t.purpose.inquiryPurposeCode;
           }
-          res = await api.post('v4/saOrchestrator/createAppointment', body);
+          res = await post('v4/saOrchestrator/createAppointment', body);
           break;
         }
         case 'bookLdp': {
-          res = await api.post('v4/saOrchestrator/createAppointment', { ...base, referralId: t.source.referralId });
+          res = await post('v4/saOrchestrator/createAppointment', { ...base, referralId: t.source.referralId });
           break;
         }
         case 'shiftLab':
         case 'shiftLdp':
         case 'shiftDoctor': {
-          res = await api.post('v4/saOrchestrator/shiftAppointment', { ...base, appointmentId: t.source.appointmentId });
+          res = await post('v4/saOrchestrator/shiftAppointment', { ...base, appointmentId: t.source.appointmentId });
           // Перенос иногда проходит только со вторым параметром referralId — при отказе
           // повторяем с ним, но ТОЛЬКО при бизнес-отказе (400–499, кроме 429 и «выключить
           // цель»). При сетевой ошибке (status 0), 429 или 5xx api уже выставил паузу перед
           // следующей попыткой — слать второй запрос сразу же значит обойти эту паузу.
-          const isBusinessRejection = !res.ok && res.status >= 400 && res.status < 500 && res.status !== 429
+          const isBusinessRejection = !res.ok && !res.cancelled && res.status >= 400 && res.status < 500 && res.status !== 429
             && !(res.explained && res.explained.action === 'stopTarget');
           if (isBusinessRejection && t.source.referralId) {
-            res = await api.post('v4/saOrchestrator/shiftAppointment', { ...base, appointmentId: t.source.appointmentId, referralId: t.source.referralId });
+            res = await post('v4/saOrchestrator/shiftAppointment', { ...base, appointmentId: t.source.appointmentId, referralId: t.source.referralId });
           }
           break;
         }
         default:
           return { ok: false, verified: false, message: UNSUPPORTED_MESSAGE, action: null };
       }
+
+      if (res.cancelled) return { ok: false, verified: false, cancelled: true };
 
       if (!res.ok) {
         // Таймаут (status 0) или 5xx не значат, что мутация не прошла — ЕМИАС мог принять
@@ -1070,13 +1081,14 @@
     // выполненной и на этом же слоте не повторяемся прямо на следующем
     // тике; отказ (!ok) — смотрим action.
     async function finish(t, cand, id) {
-      const cancelled = { ok: false, verified: false, message: 'поиск остановлен или изменён, запись не отправлена' };
+      const cancelled = { ok: false, verified: false, cancelled: true, message: 'поиск остановлен или изменён' };
       if (!canContinue(id)) return cancelled;
       const appts = await appointments();
       if (!canContinue(id)) return cancelled;
       // Уже отправленную запись нельзя отменить остановкой таймера:
       // её результат всё равно проверяем и сообщаем человеку.
-      const res = await targets.act(t, cand, { now: now(), appointments: appts });
+      const res = await targets.act(t, cand, { now: now(), appointments: appts, canContinue: () => canContinue(id) });
+      if (res.cancelled) return cancelled;
 
       if (res.ok && res.verified) {
         state.byId[t.id] = { state: t.keepImproving ? 'improving' : 'done', note: res.message };
@@ -2644,6 +2656,7 @@
     const where = payload.address ? ` — ${ui.stripCampus(payload.address)}` : '';
     notify('ЕМИАС: нужно решение', `${payload.title}: ${ui.human(payload.slot.startTime)}${where} — 60 секунд на ответ`);
     const targetId = payload.targetId;
+    removeConfirmCard(targetId);
     const tickId = setInterval(() => {
       const p = pendingConfirms[targetId];
       if (!p || Date.now() >= p.expiresAt) { removeConfirmCard(targetId); return; }
@@ -2682,12 +2695,14 @@
     const title = titleFor(targetId);
     const bookDecision = decision === 'book';
     const p = pendingConfirms[targetId];
-    const node = p && p.node;
-    // Отвязываем карточку от отсчёта, но сам элемент пока оставляем на месте.
-    if (p) { clearInterval(p.tickId); delete pendingConfirms[targetId]; }
+    if (!p || p.busy) return;
+    const node = p.node;
+    // Пока ждём ответ, stop()/standby всё ещё могут убрать эту карточку.
+    clearInterval(p.tickId);
+    p.busy = true;
     const dropNode = () => { if (node && node.parentNode) node.parentNode.removeChild(node); };
     if (!bookDecision) {
-      dropNode();
+      removeConfirmCard(targetId);
       try { await core.answer(targetId, 'skip'); } catch (e) { /* пропуск ничего не отправляет */ }
       return;
     }
@@ -2695,16 +2710,20 @@
     const foundBefore = foundCount[targetId] || 0;
     let failText = null;
     let alreadyLogged = false;
+    let cancelled = false;
     try {
       const res = await core.answer(targetId, 'book');
-      if (!res || !res.ok || !res.verified) {
+      cancelled = !!(res && res.cancelled);
+      if (!cancelled && (!res || !res.ok || !res.verified)) {
         failText = (res && res.message) || 'слот уже не актуален';
         alreadyLogged = (foundCount[targetId] || 0) > foundBefore;
       }
     } catch (e) {
       failText = (e && e.message) || 'неизвестная ошибка';
     }
-    if (!failText) { dropNode(); return; }
+    if (pendingConfirms[targetId] !== p) return;
+    delete pendingConfirms[targetId];
+    if (cancelled || !failText) { dropNode(); return; }
     const text = `${title}: записать не удалось — ${failText}`;
     if (!alreadyLogged) pushLog({ at: Date.now(), msg: text });
     if (node) {

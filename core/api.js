@@ -18,7 +18,10 @@
     // Общая часть post() и get(): заголовки, сетевой бэкофф, продление сессии
     // по 401, разбор ответа. body === undefined → запрос без тела (GET), с
     // телом → Content-Type и JSON.stringify (POST).
-    async function request(method, path, body, retried) {
+    async function request(method, path, body, retried, canContinue) {
+      if (canContinue && !canContinue()) {
+        return { ok: false, cancelled: true, status: 0, json: null, explained: null };
+      }
       let r;
       try {
         const headers = { Accept: 'application/json', 'EI-Token': session.token(), 'X-App': 'portal' };
@@ -43,7 +46,10 @@
 
       // 401: пытаемся один раз продлить сессию и повторить запрос
       if (r.status === 401 && !retried) {
-        if (await session.refresh()) return request(method, path, body, true);
+        if (canContinue && !canContinue()) {
+          return { ok: false, cancelled: true, status: r.status, json, explained: null };
+        }
+        if (await session.refresh()) return request(method, path, body, true, canContinue);
       }
       // Повторный 401 — сессия не продлевается. Текст этого сообщения попадает
       // пользователю на глаза как есть (userscript/ui-dom.js onSessionLost
@@ -73,9 +79,9 @@
       };
     }
 
-    function post(path, body, retried) {
+    function post(path, body, retried, canContinue) {
       const id = session.identity();
-      return request('POST', path, { omsNumber: id.oms, birthDate: id.birth, ...body }, retried);
+      return request('POST', path, { omsNumber: id.oms, birthDate: id.birth, ...body }, retried, canContinue);
     }
 
     // GET без тела и без omsNumber/birthDate — используется до того, как

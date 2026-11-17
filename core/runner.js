@@ -250,13 +250,14 @@
     // выполненной и на этом же слоте не повторяемся прямо на следующем
     // тике; отказ (!ok) — смотрим action.
     async function finish(t, cand, id) {
-      const cancelled = { ok: false, verified: false, message: 'поиск остановлен или изменён, запись не отправлена' };
+      const cancelled = { ok: false, verified: false, cancelled: true, message: 'поиск остановлен или изменён' };
       if (!canContinue(id)) return cancelled;
       const appts = await appointments();
       if (!canContinue(id)) return cancelled;
       // Уже отправленную запись нельзя отменить остановкой таймера:
       // её результат всё равно проверяем и сообщаем человеку.
-      const res = await targets.act(t, cand, { now: now(), appointments: appts });
+      const res = await targets.act(t, cand, { now: now(), appointments: appts, canContinue: () => canContinue(id) });
+      if (res.cancelled) return cancelled;
 
       if (res.ok && res.verified) {
         state.byId[t.id] = { state: t.keepImproving ? 'improving' : 'done', note: res.message };

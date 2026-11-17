@@ -237,6 +237,9 @@
     }
 
     async function act(t, cand, ctx) {
+      // Проверка относится к каждой отправке, включая повтор с referralId
+      // и повтор после обновления токена внутри api.post().
+      const post = (path, body) => api.post(path, body, false, ctx.canContinue);
       const base = {
         availableResourceId: cand.resourceId, complexResourceId: cand.complexResourceId,
         startTime: cand.slot.startTime, endTime: cand.slot.endTime,
@@ -244,7 +247,7 @@
       let res;
       switch (t.scenario) {
         case 'bookLab': {
-          res = await api.post('v4/saOrchestrator/createAppointment', base);
+          res = await post('v4/saOrchestrator/createAppointment', base);
           break;
         }
         case 'bookDoctor': {
@@ -256,31 +259,33 @@
             body.inquiryPurposeId = t.purpose.inquiryPurposeId;
             body.inquiryPurposeCode = t.purpose.inquiryPurposeCode;
           }
-          res = await api.post('v4/saOrchestrator/createAppointment', body);
+          res = await post('v4/saOrchestrator/createAppointment', body);
           break;
         }
         case 'bookLdp': {
-          res = await api.post('v4/saOrchestrator/createAppointment', { ...base, referralId: t.source.referralId });
+          res = await post('v4/saOrchestrator/createAppointment', { ...base, referralId: t.source.referralId });
           break;
         }
         case 'shiftLab':
         case 'shiftLdp':
         case 'shiftDoctor': {
-          res = await api.post('v4/saOrchestrator/shiftAppointment', { ...base, appointmentId: t.source.appointmentId });
+          res = await post('v4/saOrchestrator/shiftAppointment', { ...base, appointmentId: t.source.appointmentId });
           // Перенос иногда проходит только со вторым параметром referralId — при отказе
           // повторяем с ним, но ТОЛЬКО при бизнес-отказе (400–499, кроме 429 и «выключить
           // цель»). При сетевой ошибке (status 0), 429 или 5xx api уже выставил паузу перед
           // следующей попыткой — слать второй запрос сразу же значит обойти эту паузу.
-          const isBusinessRejection = !res.ok && res.status >= 400 && res.status < 500 && res.status !== 429
+          const isBusinessRejection = !res.ok && !res.cancelled && res.status >= 400 && res.status < 500 && res.status !== 429
             && !(res.explained && res.explained.action === 'stopTarget');
           if (isBusinessRejection && t.source.referralId) {
-            res = await api.post('v4/saOrchestrator/shiftAppointment', { ...base, appointmentId: t.source.appointmentId, referralId: t.source.referralId });
+            res = await post('v4/saOrchestrator/shiftAppointment', { ...base, appointmentId: t.source.appointmentId, referralId: t.source.referralId });
           }
           break;
         }
         default:
           return { ok: false, verified: false, message: UNSUPPORTED_MESSAGE, action: null };
       }
+
+      if (res.cancelled) return { ok: false, verified: false, cancelled: true };
 
       if (!res.ok) {
         // Таймаут (status 0) или 5xx не значат, что мутация не прошла — ЕМИАС мог принять
