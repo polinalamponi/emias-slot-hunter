@@ -36,6 +36,9 @@
   }
 
   function createRunner({ targets, api, session, timer, now, emit, config }) {
+    // running снова станет true при перезапуске, но старые запросы всё ещё
+    // могут ждать ответа. Номер запуска не даёт им продолжить новую охоту.
+    let runId = 0;
     const state = {
       running: false,
       list: [],
@@ -62,6 +65,7 @@
     function setTargets(list) {
       state.list = list.map((t) => ({ ...t }));
       state.byId = {};
+      state.pending = {};
       state.verifyFailedKey = {};
       for (const t of state.list) state.byId[t.id] = { state: 'idle', note: '' };
       // Смена целей обнуляет подтверждение холостого прогона — иначе можно
@@ -197,6 +201,8 @@
 
     async function start() {
       if (state.confirmed !== gateFingerprint(state.list)) throw new Error('сначала холостой прогон и подтверждение');
+      runId++;
+      state.pending = {};
       state.running = true;
       state.lastTickAt = now();
       state.lastCheckAt = 0; // в этом запуске проверок ещё не было
@@ -209,8 +215,20 @@
     }
 
     function stop() {
+      runId++;
       state.running = false;
+      state.pending = {};
       timer.cancel();
+    }
+
+    function canContinue(id) {
+      if (!state.running || id !== runId) return false;
+      if (state.confirmed !== gateFingerprint(state.list)) {
+        stop();
+        emit('needDryRun', { message: 'цели изменились — нужен новый холостой прогон' });
+        return false;
+      }
+      return true;
     }
 
     function schedule() {
@@ -220,7 +238,10 @@
       // minIntervalMs — жёсткий пол ПОСЛЕ джиттера: даже нижняя граница
       // джиттера не должна увести фактическую задержку ниже 20 секунд.
       const jittered = Math.round(base * (0.8 + Math.random() * 0.4));
-      timer.schedule(Math.max(config.minIntervalMs, jittered), tick);
+      const id = runId;
+      timer.schedule(Math.max(config.minIntervalMs, jittered), () => {
+        if (canContinue(id)) return tick();
+      });
     }
 
     // Три исхода targets.act(): успех (ok && verified) — цель выполнена;
@@ -228,8 +249,13 @@
     // мутация могла пройти, но подтвердить не удалось: цель НЕ помечаем
     // выполненной и на этом же слоте не повторяемся прямо на следующем
     // тике; отказ (!ok) — смотрим action.
-    async function finish(t, cand) {
+    async function finish(t, cand, id) {
+      const cancelled = { ok: false, verified: false, message: 'поиск остановлен или изменён, запись не отправлена' };
+      if (!canContinue(id)) return cancelled;
       const appts = await appointments();
+      if (!canContinue(id)) return cancelled;
+      // Уже отправленную запись нельзя отменить остановкой таймера:
+      // её результат всё равно проверяем и сообщаем человеку.
       const res = await targets.act(t, cand, { now: now(), appointments: appts });
 
       if (res.ok && res.verified) {
@@ -299,7 +325,7 @@
     // Ответ пользователя на needConfirm (режим mode: 'confirm'). Раннер
     // может быть уже остановлен между needConfirm и ответом человека (или
     // намеренно, или из-за stop()) — в этом случае ничего в ЕМИАС не шлём,
-    // заявка остаётся нетронутой на случай последующего запуска.
+    // старые заявки снимаются при stop(), чтобы не пережить перезапуск.
     async function answer(targetId, decision) {
       if (!state.running) return { ok: false, message: 'раннер остановлен, ответ не отправлен' };
       const p = state.pending[targetId];
@@ -309,23 +335,12 @@
         log(`${p.target.title}: пользователь отклонил слот`);
         return { ok: false };
       }
-      return finish(p.target, p.candidate);
+      return finish(p.target, p.candidate, runId);
     }
 
     async function tick() {
-      if (!state.running) return;
-
-      // C2: гейт холостого прогона проверяем не только в start(), но и на
-      // каждом тике — setTargets() может прийти уже во время работающего
-      // цикла (мастер меняет условия, пока человек ещё читает холостой
-      // прогон), и цикл не должен продолжать работать по неподтверждённым
-      // целям до следующего запланированного tick().
-      if (state.confirmed !== gateFingerprint(state.list)) {
-        state.running = false;
-        timer.cancel();
-        emit('needDryRun', { message: 'цели изменились — нужен новый холостой прогон' });
-        return;
-      }
+      const id = runId;
+      if (!canContinue(id)) return;
 
       // Обнаружение сна компьютера/вкладки: если между тиками прошло сильно
       // больше, чем должно быть по расписанию, — это не «мы решили не
@@ -339,14 +354,17 @@
 
       try {
         if (session.needsRefresh(config.refreshAt)) await session.refresh();
+        if (!canContinue(id)) return;
         if (now() >= api.backoffUntil()) {
           const appts = await appointments();
+          if (!canContinue(id)) return;
           // I4: потеря сессии не должна засчитываться как успешная проверка —
           // оба break targetsLoop ниже взводят этот флаг, и lastOkAt/
           // staleNotified обновляются только если сессия жива.
           let relogin = false;
           targetsLoop:
           for (const t of state.list) {
+            if (!canContinue(id)) return;
             // C2: backoffUntil проверяли только один раз в начале tick() (выше) — но
             // targets.search() сам может нарваться на 429 ПОСЕРЕДИНЕ этого перебора
             // (например, у первой цели), и тогда без этой проверки раннер всё равно
@@ -374,7 +392,9 @@
               continue;
             }
 
+            if (!canContinue(id)) return;
             const r = await targets.search(t, { now: now(), appointments: appts });
+            if (!canContinue(id)) return;
 
             if (r.action === 'stopTarget') {
               const message = (r.notes && r.notes.join('; ')) || 'цель остановлена';
@@ -416,15 +436,18 @@
               continue;
             }
 
-            const res = await finish(t, cand);
+            const res = await finish(t, cand, id);
+            if (!canContinue(id)) return;
             if (res.action === 'relogin') { relogin = true; break targetsLoop; }
           }
+          if (!canContinue(id)) return;
           if (!relogin) {
             state.lastOkAt = now();
             state.staleNotified = false;
           }
         }
       } catch (e) {
+        if (!canContinue(id)) return;
         if (e && e.name === 'SessionError') emit('sessionLost', { message: e.message });
         else log('сбой проверки: ' + (e && e.message));
       }

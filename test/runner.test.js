@@ -18,7 +18,7 @@ function harness(overrides = {}) {
   const runner = createRunner({
     targets,
     api,
-    session: { needsRefresh: () => false, refresh: async () => true, refreshedAt: 0 },
+    session: overrides.session || { needsRefresh: () => false, refresh: async () => true, refreshedAt: 0 },
     timer: { schedule: (ms, fn) => scheduled.push({ ms, fn }), cancel: () => scheduled.splice(0) },
     now: () => t,
     emit: (type, payload) => events.push({ type, payload }),
@@ -29,6 +29,214 @@ function harness(overrides = {}) {
 
 const target = { id: 'lab', scenario: 'bookLab', title: 'Кровь', mode: 'auto', source: { moId: 1, samplingTypeId: 1 } };
 const cand = { slot: { startTime: '2026-09-24T09:00:00+03:00', endTime: '2026-09-24T09:15:00+03:00' }, address: 'улица Тестовая, д. 2', resourceId: 1, complexResourceId: 2 };
+
+function deferred() {
+  let resolve;
+  const promise = new Promise((done) => { resolve = done; });
+  return { promise, resolve };
+}
+
+for (const mode of ['auto', 'confirm']) {
+  test(`${mode}: stop() во время поиска не даёт записать слот или запросить подтверждение`, async () => {
+    const response = deferred();
+    const entered = deferred();
+    let delay = false;
+    let acted = 0;
+    const result = { candidates: [cand], rejected: [], notes: [] };
+    const h = harness({
+      search: () => { if (!delay) return result; entered.resolve(); return response.promise; },
+      act: async () => { acted++; return { ok: true, verified: true }; },
+    });
+    h.runner.setTargets([{ ...target, mode }]);
+    h.runner.confirmDryRun((await h.runner.dryRun()).id);
+    await h.runner.start();
+    delay = true;
+    const tick = h.runner.tick();
+    await entered.promise;
+    h.runner.stop();
+    response.resolve(result);
+    await tick;
+
+    assert.equal(acted, 0);
+    assert.ok(!h.events.some((e) => e.type === 'needConfirm' || e.type === 'booked'));
+    assert.deepEqual(h.runner.status().pending, []);
+    assert.equal(h.scheduled.length, 0);
+  });
+}
+
+test('stop() и новый start() не оживляют старый поиск', async () => {
+  const response = deferred();
+  const entered = deferred();
+  let delay = false;
+  let acted = 0;
+  const result = { candidates: [cand], rejected: [], notes: [] };
+  const h = harness({
+    search: () => { if (!delay) return result; entered.resolve(); return response.promise; },
+    act: async () => { acted++; return { ok: true, verified: true }; },
+  });
+  h.runner.setTargets([target]);
+  h.runner.confirmDryRun((await h.runner.dryRun()).id);
+  await h.runner.start();
+  delay = true;
+  const oldTick = h.runner.tick();
+  await entered.promise;
+  h.runner.stop();
+  await h.runner.start();
+  response.resolve(result);
+  await oldTick;
+
+  assert.equal(acted, 0);
+  assert.equal(h.runner.status().running, true);
+  assert.equal(h.runner.status().lastCheckAt, 0);
+  assert.equal(h.scheduled.length, 1, 'старый тик не добавляет таймер новому запуску');
+  delay = false;
+  await h.runner.tick();
+  assert.equal(acted, 1, 'новый запуск продолжает работать');
+});
+
+for (const mode of ['auto', 'confirm']) {
+  test(`${mode}: остановка при чтении записей перед act() отменяет запись`, async () => {
+    const response = deferred();
+    const entered = deferred();
+    let delay = false;
+    let acted = 0;
+    const appointments = { ok: true, json: { payload: { appointment: [] } } };
+    const h = harness({
+      apiPost: () => { if (!delay) return appointments; entered.resolve(); return response.promise; },
+      search: async () => {
+        if (h.runner.status().running && mode === 'auto') delay = true;
+        return { candidates: [cand], rejected: [], notes: [] };
+      },
+      act: async () => { acted++; return { ok: true, verified: true }; },
+    });
+    h.runner.setTargets([{ ...target, mode }]);
+    h.runner.confirmDryRun((await h.runner.dryRun()).id);
+    await h.runner.start();
+    const tick = h.runner.tick();
+    let work = tick;
+    if (mode === 'confirm') {
+      await tick;
+      delay = true;
+      work = h.runner.answer(target.id, 'book');
+    }
+    await entered.promise;
+    h.runner.stop();
+    response.resolve(appointments);
+    await work;
+
+    assert.equal(acted, 0);
+    assert.ok(!h.events.some((e) => e.type === 'booked'));
+    assert.equal(h.scheduled.length, 0);
+  });
+}
+
+test('stop() во время первого чтения записей не запускает поиск', async () => {
+  const response = deferred();
+  const entered = deferred();
+  let delay = false;
+  let searched = 0;
+  const appointments = { ok: true, json: { payload: { appointment: [] } } };
+  const h = harness({
+    apiPost: () => { if (!delay) return appointments; entered.resolve(); return response.promise; },
+    search: async () => { searched++; return { candidates: [], rejected: [], notes: [] }; },
+  });
+  h.runner.setTargets([target]);
+  h.runner.confirmDryRun((await h.runner.dryRun()).id);
+  await h.runner.start();
+  searched = 0;
+  delay = true;
+  const tick = h.runner.tick();
+  await entered.promise;
+  h.runner.stop();
+  response.resolve(appointments);
+  await tick;
+  assert.equal(searched, 0);
+  assert.equal(h.scheduled.length, 0);
+});
+
+test('stop() во время обновления сессии не запускает чтение записей', async () => {
+  const response = deferred();
+  const entered = deferred();
+  let reads = 0;
+  const h = harness({
+    session: { needsRefresh: () => true, refresh: () => { entered.resolve(); return response.promise; }, refreshedAt: 0 },
+    apiPost: async () => { reads++; return { ok: true, json: { payload: { appointment: [] } } }; },
+  });
+  h.runner.setTargets([target]);
+  h.runner.confirmDryRun((await h.runner.dryRun()).id);
+  await h.runner.start();
+  reads = 0;
+  const tick = h.runner.tick();
+  await entered.promise;
+  h.runner.stop();
+  response.resolve(true);
+  await tick;
+  assert.equal(reads, 0);
+  assert.equal(h.scheduled.length, 0);
+});
+
+test('смена целей во время поиска не даёт записать слот из старого ответа', async () => {
+  const response = deferred();
+  const entered = deferred();
+  let delay = false;
+  let acted = 0;
+  const result = { candidates: [cand], rejected: [], notes: [] };
+  const h = harness({
+    search: () => { if (!delay) return result; entered.resolve(); return response.promise; },
+    act: async () => { acted++; return { ok: true, verified: true }; },
+  });
+  h.runner.setTargets([target]);
+  h.runner.confirmDryRun((await h.runner.dryRun()).id);
+  await h.runner.start();
+  delay = true;
+  const tick = h.runner.tick();
+  await entered.promise;
+  h.runner.setTargets([{ ...target, title: 'Другая цель' }]);
+  response.resolve(result);
+  await tick;
+  assert.equal(acted, 0);
+  assert.equal(h.runner.status().running, false);
+  assert.ok(h.events.some((e) => e.type === 'needDryRun'));
+});
+
+test('после stop() и start() старое подтверждение слота не принимается', async () => {
+  let acted = 0;
+  const h = harness({
+    search: async () => ({ candidates: [cand], rejected: [], notes: [] }),
+    act: async () => { acted++; return { ok: true, verified: true }; },
+  });
+  h.runner.setTargets([{ ...target, mode: 'confirm' }]);
+  h.runner.confirmDryRun((await h.runner.dryRun()).id);
+  await h.runner.start();
+  await h.runner.tick();
+  h.runner.stop();
+  await h.runner.start();
+  const res = await h.runner.answer(target.id, 'book');
+  assert.equal(res.ok, false);
+  assert.equal(acted, 0);
+});
+
+test('уже отправленная запись проверяется после stop(), но следующая цель не запускается', async () => {
+  const response = deferred();
+  const entered = deferred();
+  const searched = [];
+  const h = harness({
+    search: async (t) => { searched.push(t.id); return { candidates: [cand], rejected: [], notes: [] }; },
+    act: () => { entered.resolve(); return response.promise; },
+  });
+  h.runner.setTargets([target, { ...target, id: 'lab2' }]);
+  h.runner.confirmDryRun((await h.runner.dryRun()).id);
+  await h.runner.start();
+  searched.length = 0;
+  const tick = h.runner.tick();
+  await entered.promise;
+  h.runner.stop();
+  response.resolve({ ok: true, verified: true, message: 'Готово' });
+  await tick;
+  assert.deepEqual(searched, [target.id]);
+  assert.equal(h.events.filter((e) => e.type === 'booked').length, 1);
+  assert.equal(h.scheduled.length, 0);
+});
 
 test('start без подтверждённого прогона запрещён', async () => {
   const h = harness();
