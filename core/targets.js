@@ -172,6 +172,8 @@
           for (const slot of picked.ok) candidates.push({ slot, address, resourceId: r.id, complexResourceId: cr.id, name: r.name });
         }
       }
+      const compare = filters.slotComparator(t);
+      candidates.sort((a, b) => compare(a.slot, b.slot));
       if (addressUnknown) notes.push(`Не удалось определить адрес ${addressUnknown} кабинет(ов) в расписании — пропущены`);
       if (addressMismatch) notes.push(`Кабинетов с другим адресом пропущено: ${addressMismatch}`);
       if (pausedByBackoff) notes.push('ЕМИАС попросил паузу — часть кабинетов не проверена, продолжу на следующей проверке');

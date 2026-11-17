@@ -5,6 +5,25 @@
   function createFilters(util) {
     const { toMs, slotHHMM, distTo, campus } = util;
 
+    function slotComparator(t) {
+      if (t.near) {
+        // Сортируем по близости к желаемому интервалу near (0 = пересекается с ним).
+        return (a, b) => distTo(t.near, toMs(a.startTime), toMs(a.endTime)) - distTo(t.near, toMs(b.startTime), toMs(b.endTime));
+      }
+      if (t.anyTime && t.current) {
+        // При anyTime ближайшие к текущей записи по модулю — первыми.
+        const cur = toMs(t.current);
+        return (a, b) => Math.abs(toMs(a.startTime) - cur) - Math.abs(toMs(b.startTime) - cur);
+      }
+      // prefer поднимает наверх слоты, попадающие в предпочтительное окно
+      // (день не позже prefer.until и, если задано, время раньше prefer.timeTo).
+      // Внутри каждой группы — по возрастанию времени.
+      const preferred = (slot) => (t.prefer
+        && slot.startTime.slice(0, 10) <= t.prefer.until
+        && (!t.prefer.timeTo || slotHHMM(slot.startTime) < t.prefer.timeTo) ? 0 : 1);
+      return (a, b) => preferred(a) - preferred(b) || toMs(a.startTime) - toMs(b.startTime);
+    }
+
     // Можно ли занять слот, не нарушив другие записи того же дня: между записями
     // в разных кампусах нужен запас travelMs на дорогу, в одном и том же — можно впритык.
     function travelOk({ selfId, address, slot, appointments, travelMs }) {
@@ -65,26 +84,12 @@
         ok.push(slot);
       }
 
-      if (t.near) {
-        // Сортируем по близости к желаемому интервалу near (0 = пересекается с ним).
-        ok.sort((a, b) => distTo(t.near, toMs(a.startTime), toMs(a.endTime)) - distTo(t.near, toMs(b.startTime), toMs(b.endTime)));
-      } else if (t.anyTime && cur != null) {
-        // При anyTime ориентируемся на время текущей записи: ближайшие по модулю — первыми.
-        ok.sort((a, b) => Math.abs(toMs(a.startTime) - cur) - Math.abs(toMs(b.startTime) - cur));
-      } else {
-        // prefer поднимает наверх слоты, попадающие в предпочтительное окно
-        // (день не позже prefer.until и, если задано, время раньше prefer.timeTo);
-        // внутри каждой группы (предпочтительные / остальные) — по возрастанию времени.
-        const preferred = (slot) => (t.prefer
-          && slot.startTime.slice(0, 10) <= t.prefer.until
-          && (!t.prefer.timeTo || slotHHMM(slot.startTime) < t.prefer.timeTo) ? 0 : 1);
-        ok.sort((a, b) => preferred(a) - preferred(b) || toMs(a.startTime) - toMs(b.startTime));
-      }
+      ok.sort(slotComparator(t));
 
       return { ok, rejected };
     }
 
-    return { pickSlots, travelOk };
+    return { pickSlots, travelOk, slotComparator };
   }
 
   const api = { createFilters };

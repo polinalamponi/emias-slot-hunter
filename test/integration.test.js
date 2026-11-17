@@ -7,6 +7,7 @@ const { create } = require('../core/index.js');
 const referrals = require('./fixtures/referrals.json');
 const schedule = require('./fixtures/schedule.json');
 const doctorsLi = require('./fixtures/doctors-li.json');
+const existingLab = require('./fixtures/appointments.json').payload.appointment.find((a) => a.toBM);
 
 // core/index.js больше не делает require() своих соседей (это ломало бы
 // проверку сборки из Task 1 — в собранном userscript require( быть не
@@ -30,19 +31,21 @@ const modules = Object.assign(
 // тестовые данные за утечку персональных данных.
 const OMS = Array(16).fill('0').join('');
 
-function env() {
+function env({ resources = doctorsLi, scheduleFor = () => schedule, appointments = [] } = {}) {
   const store = {
     'persist:sessionAuth': JSON.stringify({ accessToken: '"a"', refreshToken: '"r"', idToken: 'null', ctime: '"2026-09-23T06:00:00Z"' }),
   };
   let booked = null;
+  let bookingRequest = null;
   const fetchFn = async (url, opts) => {
     const body = JSON.parse(opts.body || '{}');
     const reply = (json) => ({ ok: true, status: 200, text: async () => JSON.stringify(json), json: async () => json });
     if (url.includes('getAssignmentsReferralsInfo')) return reply(referrals);
-    if (url.includes('getAppointmentReceptionsByPatient')) return reply({ payload: { appointment: booked ? [booked] : [] } });
-    if (url.includes('getDoctorsInfoForLI')) return reply(doctorsLi);
-    if (url.includes('getAvailableResourceScheduleInfo')) return reply(schedule);
-    if (url.includes('createAppointment')) {
+    if (url.includes('getAppointmentReceptionsByPatient')) return reply({ payload: { appointment: booked ? [booked] : appointments } });
+    if (url.includes('getDoctorsInfoForLI')) return reply(resources);
+    if (url.includes('getAvailableResourceScheduleInfo')) return reply(scheduleFor(body));
+    if (url.includes('createAppointment') || url.includes('shiftAppointment')) {
+      bookingRequest = body;
       booked = { id: 700000000010, startTime: body.startTime.slice(0, 19), endTime: body.endTime.slice(0, 19), type: 'BM', lpuId: 10000001, lpuAddress: 'улица Тестовая, д. 2', toBM: { id: 1, name: 'Взятие венозной крови' } };
       return reply({ payload: {} });
     }
@@ -52,6 +55,7 @@ function env() {
   return {
     fetchFn, timer, store,
     booked: () => booked,
+    bookingRequest: () => bookingRequest,
     storage: { getItem: (k) => store[k] ?? null, setItem: (k, v) => { store[k] = String(v); }, removeItem: (k) => { delete store[k]; } },
   };
 }
@@ -79,6 +83,65 @@ test('полный путь: нашли цель → холостой прого
   assert.ok(e.booked(), 'слот записан');
   assert.equal(h.status().targets[0].state, 'improving');
 });
+
+for (const [name, options, starts, winner] of [
+  ['ранний слот', {}, [
+    '2026-09-26T09:00:00+03:00', '2026-09-25T09:00:00+03:00', '2026-09-24T09:00:00+03:00',
+  ], 2],
+  ['prefer', { prefer: { until: '2026-09-25', timeTo: '11:00' } }, [
+    '2026-09-24T15:00:00+03:00', '2026-09-25T10:30:00+03:00', '2026-09-26T09:00:00+03:00',
+  ], 1],
+  ['near', { near: { start: '2026-09-25T11:00:00+03:00', end: '2026-09-25T11:15:00+03:00' } }, [
+    '2026-09-25T09:00:00+03:00', '2026-09-25T13:00:00+03:00', '2026-09-25T11:30:00+03:00',
+  ], 2],
+  ['anyTime', { anyTime: true, current: existingLab.startTime + '+03:00' }, [
+    '2026-09-24T09:00:00+03:00', '2026-09-25T13:00:00+03:00', '2026-09-25T14:00:00+03:00',
+  ], 1],
+  ['равные слоты', {}, Array(3).fill('2026-09-24T09:00:00+03:00'), 0],
+]) {
+  test(`общий выбор между ресурсами и кабинетами: ${name}`, async () => {
+    const util = modules.createUtil();
+    const rooms = starts.map((startTime, i) => ({
+      resourceId: 200000001 + Math.floor(i / 2), complexResourceId: 300000001 + i,
+      slot: { startTime, endTime: util.mskDateTime(new Date(Date.parse(startTime) + 15 * 60000)).replace(' ', 'T') + '+03:00' },
+    }));
+    const resources = structuredClone(doctorsLi);
+    const available = resources.payload.doctorsInfo[0].availableResources;
+    available[0].complexResource.push({ id: rooms[1].complexResourceId });
+    available.push({ ...available[0], id: rooms[2].resourceId, complexResource: [{ id: rooms[2].complexResourceId }] });
+    const e = env({ resources, appointments: options.current ? [existingLab] : [], scheduleFor: (body) => {
+      const room = rooms.find((r) => r.complexResourceId === body.complexResourceId);
+      const response = structuredClone(schedule);
+      response.payload.availableResource.id = room.resourceId;
+      response.payload.availableResource.complexResource[0].id = room.complexResourceId;
+      response.payload.scheduleOfDay = [{ date: room.slot.startTime.slice(0, 10), scheduleBySlot: [
+        { complexResourceId: room.complexResourceId, slot: [room.slot] },
+      ] }];
+      return response;
+    } });
+    const h = create({ storage: e.storage, fetch: e.fetchFn, now: () => Date.parse('2026-09-23T06:00:00Z'), timer: e.timer, channel: null, modules });
+    await h.init({ identity: { oms: OMS, birth: '2000-01-01' } });
+    const lab = (await h.discover()).find((o) => o.scenario === 'bookLab' || o.scenario === 'shiftLab');
+    h.setTargets([{ ...lab, mode: 'auto', minLeadMs: 2 * 3600000, respectTravel: true, travelMs: 3600000, ...options }]);
+    const report = await h.dryRun();
+    const expected = rooms[winner];
+    assert.equal(report.items[0].would.startTime, expected.slot.startTime);
+    assert.equal(e.booked(), null);
+    h.confirmDryRun(report.id);
+    await h.start();
+    try {
+      await e.timer.queue.shift()();
+      assert.equal(e.bookingRequest().availableResourceId, expected.resourceId);
+      assert.equal(e.bookingRequest().complexResourceId, expected.complexResourceId);
+      assert.equal(e.bookingRequest().startTime, expected.slot.startTime);
+      assert.equal(e.bookingRequest().appointmentId, lab.source.appointmentId);
+      assert.equal(e.booked().startTime, expected.slot.startTime.slice(0, 19));
+      assert.equal(h.status().targets[0].state, 'improving');
+    } finally {
+      h.stop();
+    }
+  });
+}
 
 test('init() без identity и без опознаваемых данных в хранилище бросает понятное сообщение', async () => {
   const e = env();
