@@ -41,6 +41,15 @@ test('describeTarget: человеческое описание без жарг�
   assert.match(s, /записываю сразу/i);
 });
 
+test('buildTarget/describeTarget: фильтр врача попадает в цель и в описание', () => {
+  const t = ui.buildTarget(option, { when: 'earlier', where: 'any', doctorContains: '+иванов -петров', mode: 'auto' });
+  assert.equal(t.doctorContains, '+иванов -петров');
+  const s = ui.describeTarget({ ...t, title: 'УЗИ вен' });
+  assert.match(s, /врач: \+иванов -петров/);
+  const noDoctor = ui.buildTarget(option, { when: 'earlier', where: 'any', mode: 'auto' });
+  assert.equal(noDoctor.doctorContains, null);
+});
+
 test('describeDryRunItem: слот и предупреждения', () => {
   const s = ui.describeDryRunItem({
     title: 'Кровь', would: { startTime: '2026-09-24T09:00:00+03:00', address: 'улица Тестовая, д. 2' },

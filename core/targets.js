@@ -126,7 +126,28 @@
       if (t.scenario === 'bookDoctor' && t.source.availableResourceId) {
         resources = resources.filter((r) => String(r.id) === String(t.source.availableResourceId));
       }
-      if (!resources.length) return { candidates: [], rejected: [], notes: ['Свободных кабинетов или врачей сейчас нет'], action: null };
+      const skippedDoctors = new Set();
+      if (t.doctorContains) {
+        const matched = [];
+        for (const r of resources) {
+          if (filters.addressMatches(r.name || '', t.doctorContains)) matched.push(r);
+          else skippedDoctors.add(r.name || '(без имени)');
+        }
+        resources = matched;
+      }
+      if (!resources.length) {
+        // Фильтр врача задан и никого не подошёл — это не ошибка, а режим
+        // ожидания: врач появится в списке, когда у него откроется запись,
+        // и будет пойман следующим же тиком. Говорим об этом по-человечески
+        // и показываем, кто есть в списке сейчас.
+        const note = t.doctorContains && skippedDoctors.size
+          ? `Жду врача по фильтру «${t.doctorContains}». Пока в списке ЕМИАС только: ${[...skippedDoctors].join('; ')}`
+          : 'Свободных кабинетов или врачей сейчас нет';
+        return {
+          candidates: [], rejected: [], notes: [note], action: null,
+          skippedDoctors: [...skippedDoctors],
+        };
+      }
 
       const candidates = [];
       let rejected = [];
@@ -176,8 +197,11 @@
       candidates.sort((a, b) => compare(a.slot, b.slot));
       if (addressUnknown) notes.push(`Не удалось определить адрес ${addressUnknown} кабинет(ов) в расписании — пропущены`);
       if (addressMismatch) notes.push(`Кабинетов с другим адресом пропущено: ${addressMismatch}`);
+      if (skippedDoctors.size) {
+        notes.push(`Врачей мимо фильтра «${t.doctorContains}» пропущено: ${skippedDoctors.size} — ${[...skippedDoctors].join('; ')}`);
+      }
       if (pausedByBackoff) notes.push('ЕМИАС попросил паузу — часть кабинетов не проверена, продолжу на следующей проверке');
-      return { candidates, rejected, notes, action };
+      return { candidates, rejected, notes, action, skippedDoctors: [...skippedDoctors] };
     }
 
     // Проверяем, что найденная в списке запись — действительно та, что мы только что
@@ -194,13 +218,16 @@
     function matches(t, appt, cand, beforeIds) {
       if (toMs(appt.startTime) !== toMs(cand.slot.startTime)) return false;
       if (campus(appt.lpuAddress) !== campus(cand.address)) return false;
+      const doctorFioOk = (t.doctorContains && appt.toDoctor && appt.toDoctor.doctorFio)
+        ? filters.addressMatches(appt.toDoctor.doctorFio, t.doctorContains)
+        : true;
       if (t.scenario === 'bookLab') {
         if (beforeIds.has(appt.id)) return false;
         return !!appt.toBM && Number(appt.toBM.id) === Number(t.source.samplingTypeId);
       }
       if (t.scenario === 'bookDoctor') {
         if (beforeIds.has(appt.id)) return false;
-        return !!appt.toDoctor;
+        return !!appt.toDoctor && doctorFioOk;
       }
       if (t.scenario === 'bookLdp') {
         if (beforeIds.has(appt.id)) return false;
@@ -213,7 +240,7 @@
       if (appt.id !== t.source.appointmentId && beforeIds.has(appt.id)) return false;
       if (t.scenario === 'shiftLdp') return !!appt.toLdp && Number(appt.toLdp.ldpTypeId) === Number(t.source.ldpTypeId);
       if (t.scenario === 'shiftDoctor') {
-        return !!appt.toDoctor && (!t.source.specialityName || appt.toDoctor.specialityName === t.source.specialityName);
+        return !!appt.toDoctor && doctorFioOk && (!t.source.specialityName || appt.toDoctor.specialityName === t.source.specialityName);
       }
       if (t.scenario === 'shiftLab') return !!appt.toBM && Number(appt.toBM.id) === Number(t.source.samplingTypeId);
       return false;
@@ -320,7 +347,35 @@
       return { ok: true, verified: true, message: 'Готово', newAppointment: verify.found, action: null };
     }
 
-    return { search, act };
+    async function listDoctors(t, now = Date.now()) {
+      const p = period(t, now);
+      const res = await listResources(t, p);
+      if (!res.ok) {
+        throw new Error(res.explained ? res.explained.message : 'ЕМИАС не отдал список врачей');
+      }
+      const seen = new Set();
+      const available = [];
+      const unavailable = [];
+      (function walk(node, notAvail) {
+        if (Array.isArray(node)) { node.forEach((n) => walk(n, notAvail)); return; }
+        if (!node || typeof node !== 'object') return;
+        const selfNotAvail = node.notAvailable === true || node.available === false;
+        for (const [k, v] of Object.entries(node)) {
+          if (v && typeof v === 'object') walk(v, notAvail || selfNotAvail || /notAvailable/i.test(k));
+        }
+        if (!node.id || !node.name || !Array.isArray(node.complexResource) || !('arType' in node) || seen.has(node.id)) return;
+        seen.add(node.id);
+        const name = String(node.name).trim();
+        if (!name) return;
+        if (notAvail || selfNotAvail) { if (!unavailable.includes(name)) unavailable.push(name); }
+        else if (!available.includes(name)) available.push(name);
+      })(res.json && res.json.payload, false);
+      // Имя может оказаться в обоих списках (в одном корпусе доступен, в
+      // другом нет) — оставляем только в «доступных».
+      return { available, unavailable: unavailable.filter((n) => !available.includes(n)) };
+    }
+
+    return { search, act, listDoctors };
   }
 
   const api = { createTargets };

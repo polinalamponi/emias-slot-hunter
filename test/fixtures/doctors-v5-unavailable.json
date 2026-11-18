@@ -1,0 +1,27 @@
+{
+  "payload": {
+    "doctorsInfo": [
+      {
+        "lpuId": 10000004,
+        "lpuShortName": "Тестовый диспансер",
+        "defaultAddress": "улица Тестовая, д. 2",
+        "availableResources": [
+          {
+            "id": 200000005,
+            "name": "Петров П.П.",
+            "arType": 10,
+            "complexResource": [{ "id": 300000005, "name": "1" }]
+          }
+        ],
+        "notAvailableResources": [
+          {
+            "id": 200000007,
+            "name": "Юшков Д.С.",
+            "arType": 10,
+            "complexResource": [{ "id": 300000007, "name": "1" }]
+          }
+        ]
+      }
+    ]
+  }
+}

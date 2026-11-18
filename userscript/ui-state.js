@@ -58,6 +58,7 @@
         timeTo: form.timeTo || null,
         addressContains: form.where === 'sameCampus' ? stripCampus(option.address)
           : form.where === 'contains' ? (form.addressContains || null) : null,
+        doctorContains: form.doctorContains || null,
         prefer: form.preferUntil ? { until: form.preferUntil, timeTo: form.preferTimeTo || null } : null,
         near: form.nearStart && form.nearEnd ? { start: form.nearStart, end: form.nearEnd } : null,
         respectTravel: form.respectTravel !== false,
@@ -99,6 +100,7 @@
 
       if (t.timeFrom || t.timeTo) parts.push(`время с ${t.timeFrom || '00:00'} до ${t.timeTo || '23:59'}`);
       if (t.addressContains) parts.push(`адрес: ${t.addressContains}`);
+      if (t.doctorContains) parts.push(`врач: ${t.doctorContains}`);
       if (t.prefer) {
         let preferText = `сначала предпочитаю до ${dayHuman(t.prefer.until)}`;
         if (t.prefer.timeTo) preferText += `, до ${t.prefer.timeTo}`;

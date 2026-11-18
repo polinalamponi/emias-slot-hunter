@@ -8,6 +8,7 @@ const doctorsLi = require('./fixtures/doctors-li.json');
 const schedule = require('./fixtures/schedule.json');
 const doctorsV5 = require('./fixtures/doctors-v5.json');
 const doctorsV5Multi = require('./fixtures/doctors-v5-multi.json');
+const doctorsV5Unavailable = require('./fixtures/doctors-v5-unavailable.json');
 
 const util = createUtil();
 const filters = createFilters(util);
@@ -576,4 +577,57 @@ test('перенос приёма врача: запись к другому с�
   const target = { ...labTarget, scenario: 'shiftDoctor', source: { appointmentId: 700000000070, specialityName: 'Врач-акушер-гинеколог' } };
   const r = await t.act(target, shiftCand, { now: NOW, appointments: [] });
   assert.equal(r.verified, false);
+});
+
+test('фильтр врача по ФИО: + оставляет своего, - отсеивает с перечнем имён', async () => {
+  const api = fakeApi([
+    ['v5/saOrchestrator/getDoctorsInfo', { ok: true, json: doctorsV5 }],
+    ['getAvailableResourceScheduleInfo', { ok: true, json: schedule }],
+  ]);
+  const t = createTargets({ api, filters, util });
+  const target = { ...doctorTarget, source: { ...doctorTarget.source, needPurpose: false } };
+  // Имя ресурса в фикстуре — «Врач_1» (на живом сайте это ФИО врача).
+  const ok = await t.search({ ...target, doctorContains: '+Врач_1' }, { now: NOW, appointments: [] });
+  assert.equal(ok.candidates.length, 2);
+  const none = await t.search({ ...target, doctorContains: '-Врач_1' }, { now: NOW, appointments: [] });
+  assert.equal(none.candidates.length, 0);
+  assert.match(none.notes.join(' '), /Врач_1/);
+  // Режим ожидания: врач не подошёл — это не ошибка, а «жду его появления».
+  assert.match(none.notes.join(' '), /Жду врача по фильтру «-Врач_1»/);
+  // Список мимо фильтра — обвязка рисует его кликабельным (выбор врача).
+});
+
+test('фильтр врача и направленный availableResourceId не противоречат друг другу', async () => {
+  const api = fakeApi([
+    ['v5/saOrchestrator/getDoctorsInfo', { ok: true, json: doctorsV5 }],
+    ['getAvailableResourceScheduleInfo', { ok: true, json: schedule }],
+  ]);
+  const t = createTargets({ api, filters, util });
+  const target = {
+    ...doctorTarget, doctorContains: '+Врач_1',
+    source: { ...doctorTarget.source, needPurpose: false, availableResourceId: 200000002 },
+  };
+  const r = await t.search(target, { now: NOW, appointments: [] });
+  assert.equal(r.candidates.length, 2);
+});
+
+test('listDoctors: уникальные имена врачей для подсказки в мастере', async () => {
+  const api = fakeApi([['v5/saOrchestrator/getDoctorsInfo', { ok: true, json: doctorsV5Multi }]]);
+  const t = createTargets({ api, filters, util });
+  const names = await t.listDoctors(doctorTarget);
+  assert.deepEqual(names, { available: ['Петров П.П.', 'Сидоров С.С.'], unavailable: [] });
+  assert.equal(api.calls[0].path, 'v5/saOrchestrator/getDoctorsInfo');
+});
+
+test('listDoctors: недоступные для записи врачи попадают в подсказку отдельно', async () => {
+  const api = fakeApi([['v5/saOrchestrator/getDoctorsInfo', { ok: true, json: doctorsV5Unavailable }]]);
+  const t = createTargets({ api, filters, util });
+  const names = await t.listDoctors(doctorTarget);
+  assert.deepEqual(names, { available: ['Петров П.П.'], unavailable: ['Юшков Д.С.'] });
+});
+
+test('listDoctors: понятная ошибка, если список недоступен', async () => {
+  const api = fakeApi([['v5/saOrchestrator/getDoctorsInfo', { ok: false, status: 500, json: null, explained: { message: 'ЕМИАС просит паузу', action: 'wait' } }]]);
+  const t = createTargets({ api, filters, util });
+  await assert.rejects(() => t.listDoctors(doctorTarget), /ЕМИАС просит паузу/);
 });

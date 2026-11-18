@@ -224,6 +224,11 @@
       .esh-btn.danger { background: #d64545; color: #fff; border-color: #d64545; }
       .esh-warn { color: #a33; font-size: 12px; }
       .esh-note { color: #666; font-size: 12px; }
+      .esh-chips { margin: 4px 0 2px; }
+      .esh-chip { display: inline-block; margin: 2px 6px 2px 0; padding: 3px 10px; font-size: 12px; text-align: left; color: #1b4d8f; background: #eaf2fb; border: 1px solid #b9d0ea; border-radius: 12px; cursor: pointer; }
+      .esh-chip:hover { background: #d8e8f8; border-color: #8fb6e0; }
+      .esh-chip-off { background: #f1f1f3; color: #555; border-color: #ccc; }
+      .esh-chip-off:hover { background: #e4e4e8; border-color: #aaa; }
       .esh-status-target { margin-bottom: 8px; }
       .esh-status-target p { margin: 2px 0; }
       .esh-confirm { width: 300px; max-width: calc(100vw - 32px); box-sizing: border-box; background: #fff8ea; border: 1px solid #e0b84b; border-radius: 10px; padding: 10px; margin-bottom: 8px; box-shadow: 0 2px 10px rgba(0,0,0,.2); }
@@ -614,6 +619,84 @@
     return h('div', {}, [group, addrInput]);
   }
 
+  function doctorField(option, form, quiet) {
+    if (!/Doctor/.test(option.scenario)) return null;
+    const matchesBox = h('div', { class: 'esh-chips' });
+    const choose = (name) => {
+      input.value = '+"' + name + '"';
+      quiet({ doctorContains: input.value });
+      renderMatches();
+    };
+    const chip = (name) => h('button', {
+      class: 'esh-chip', text: name,
+      onclick: () => choose(name),
+    });
+    const renderMatches = () => {
+      clear(matchesBox);
+      const q = String(form.doctorContains || '').trim().toLowerCase();
+      if (form.doctorsError) {
+        matchesBox.appendChild(h('p', { class: 'esh-warn', text: form.doctorsError }));
+      }
+      if (!q) return;
+      // form.doctors: { available: [...], unavailable: [...] } — второй список
+      // это «врачи, недоступные для самостоятельной записи» с сайта: выбрать
+      // можно и их, охота будет ждать, пока у него откроется запись.
+      const docs = form.doctors || { available: [], unavailable: [] };
+      const match = (list) => list.filter((n) => n.toLowerCase().includes(q));
+      const av = match(docs.available);
+      const un = match(docs.unavailable);
+      for (const name of av.slice(0, 8)) matchesBox.appendChild(chip(name));
+      if (un.length) {
+        matchesBox.appendChild(h('p', { class: 'esh-note', text: 'Сейчас недоступны для записи — выберите, и охота будет ждать его:' }));
+        for (const name of un.slice(0, 8)) matchesBox.appendChild(h('button', {
+          class: 'esh-chip esh-chip-off', text: name + ' · ждать',
+          onclick: () => choose(name),
+        }));
+      }
+      // Такой фамилии в списках нет (и точный выбор уже не сделан) —
+      // показываем всех, кого нашёл ЕМИАС: врачи зовутся не всегда ожидаемо.
+      const exactPicked = [...docs.available, ...docs.unavailable].some((n) => q.includes(n.toLowerCase()));
+      if (!av.length && !un.length && !exactPicked && form.doctorsLoaded && (docs.available.length + docs.unavailable.length)) {
+        matchesBox.appendChild(h('p', { class: 'esh-warn', text: `Врача по «${form.doctorContains}» в списке нет. Кто есть — нажмите, чтобы выбрать:` }));
+        for (const name of docs.available.slice(0, 8)) matchesBox.appendChild(chip(name));
+        if (docs.unavailable.length) {
+          matchesBox.appendChild(h('p', { class: 'esh-note', text: 'Недоступные сейчас (тоже можно выбрать — будем ждать):' }));
+          for (const name of docs.unavailable.slice(0, 8)) matchesBox.appendChild(h('button', {
+            class: 'esh-chip esh-chip-off', text: name + ' · ждать',
+            onclick: () => choose(name),
+          }));
+        }
+      }
+    };
+    const load = async () => {
+      if (form.doctorsLoaded || form.doctorsLoading) { renderMatches(); return; }
+      form.doctorsLoading = true;
+      try {
+        form.doctors = await core.listDoctors(option);
+      } catch (e) {
+        form.doctorsError = 'Список врачей не получен: ' + (e && e.message);
+      } finally {
+        form.doctorsLoading = false;
+        form.doctorsLoaded = true;
+      }
+      renderMatches();
+    };
+    const input = h('input', {
+        type: 'text', value: form.doctorContains || '', placeholder: 'фамилия, например, Иванова',
+        onfocus: () => { load(); renderMatches(); },
+        oninput: (e) => { quiet({ doctorContains: e.target.value }); load(); renderMatches(); },
+      });
+    return h('div', {}, [
+      h('label', { class: 'esh-field', text: 'Врач' }),
+      input,
+      matchesBox,
+      h('p', {
+        class: 'esh-note',
+        text: 'Начните вводить фамилию и выберите врача из списка. Если нужного врача в списке нет — он сейчас недоступен для записи: впишите фамилию текстом, и охота будет ждать его появления, записав сразу, как он откроется.',
+      }),
+    ]);
+  }
+
   function advancedFields(form, quiet) {
     const field = (label, type, key) => h('label', { class: 'esh-field' }, [
       label, h('input', { type, value: form[key], onchange: (e) => quiet({ [key]: e.target.value }) }),
@@ -643,6 +726,8 @@
     card.appendChild(whenField(option, form, update, quiet));
     card.appendChild(h('label', { class: 'esh-field', text: 'Где' }));
     card.appendChild(whereField(option, form, update, quiet));
+    const doctor = doctorField(option, form, quiet);
+    if (doctor) card.appendChild(doctor);
     const purpose = purposeField(option, form, update);
     if (purpose) card.appendChild(purpose);
     card.appendChild(h('label', { class: 'esh-row' }, [
@@ -671,6 +756,11 @@
   function stepTwoError(option, form) {
     if (form.when === 'onlyDay' && !form.day) return 'выберите день';
     if (form.where === 'contains' && !form.addressContains.trim()) return 'укажите часть адреса';
+    if (form.doctorContains && form.doctorContains.trim()) {
+      const { parseAddressFilter } = globalThis.EmiasCore || {};
+      const f = parseAddressFilter ? parseAddressFilter(form.doctorContains) : { any: ['x'], none: [] };
+      if (!f.any.length && !f.none.length) return 'укажите хотя бы один ключ врача';
+    }
     return null;
   }
 
@@ -731,6 +821,17 @@
     for (const line of rest) {
       const warn = line.trim().startsWith('⚠');
       box.appendChild(h('p', { class: warn ? 'esh-warn' : 'esh-note', text: line.trim() }));
+    }
+    if (item.skippedDoctors && item.skippedDoctors.length && wizard.forms[item.targetId]) {
+      box.appendChild(h('p', { class: 'esh-note', text: 'Отсеянные врачи. Выберите врача для повторной проверки:' }));
+      box.appendChild(h('div', { class: 'esh-chips' }, item.skippedDoctors.map((name) => h('button', {
+        class: 'esh-chip',
+        text: name,
+        onclick: () => {
+          wizard.forms[item.targetId].doctorContains = '+"' + name.replaceAll('"', '') + '"';
+          loadStep3();
+        },
+      }))));
     }
     return box;
   }

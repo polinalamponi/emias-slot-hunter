@@ -272,6 +272,7 @@
     return {
       init,
       discover: () => discover.list(),
+      listDoctors: (t) => targets.listDoctors(t),
       setTargets: (list) => runner.setTargets(list.map(normalizeTarget)),
       dryRun: () => runner.dryRun(),
       confirmDryRun: (id) => runner.confirmDryRun(id),

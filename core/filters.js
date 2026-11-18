@@ -2,6 +2,35 @@
 (function (root) {
   'use strict';
 
+  function parseAddressFilter(s) {
+    const out = { any: [], none: [] };
+    const re = /(-?\+?"[^"]*")|(-?\+?[^";\s]+)/g;
+    let m;
+    while ((m = re.exec(String(s || ''))) !== null) {
+      let body = m[0];
+      let neg = false;
+      if (body.startsWith('-')) { neg = true; body = body.slice(1); }
+      if (body.startsWith('+')) body = body.slice(1);
+      body = body.replace(/^"|"$/g, '').trim().toLowerCase();
+      // Токен без единой буквы или цифры («---», «+», «;») — не ключ, а мусор.
+      if (!body || !/\p{L}|\p{N}/u.test(body)) continue;
+      if (neg) out.none.push(body); else out.any.push(body);
+    }
+    return out;
+  }
+
+  // Подходит ли адрес под строку фильтра (см. parseAddressFilter). Пустой
+  // фильтр (или строка без единого осмысленного токена) пропускает всё —
+  // как и прежний includes() с пустой строкой.
+  function addressMatches(address, s) {
+    const f = parseAddressFilter(s);
+    if (!f.any.length && !f.none.length) return true;
+    const a = String(address || '').toLowerCase();
+    if (f.none.some((kw) => a.includes(kw))) return false;
+    if (!f.any.length) return true;
+    return f.any.some((kw) => a.includes(kw));
+  }
+
   function createFilters(util) {
     const { toMs, slotHHMM, distTo, campus } = util;
 
@@ -89,10 +118,10 @@
       return { ok, rejected };
     }
 
-    return { pickSlots, travelOk, slotComparator };
+    return { pickSlots, travelOk, slotComparator, addressMatches };
   }
 
-  const api = { createFilters };
+  const api = { createFilters, parseAddressFilter };
   if (typeof module === 'object' && module.exports) module.exports = api;
   else { root.EmiasCore = root.EmiasCore || {}; Object.assign(root.EmiasCore, api); }
 })(typeof globalThis !== 'undefined' ? globalThis : this);
