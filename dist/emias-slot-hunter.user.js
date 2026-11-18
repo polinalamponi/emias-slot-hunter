@@ -107,6 +107,44 @@
 (function (root) {
   'use strict';
 
+  // Разбираем строку фильтра адреса на обязательные и запрещённые ключи
+  // (пожелание из issue #1 — поликлиники Новой Москвы разбросаны на десятки
+  // километров, одного ключа мало). Синтаксис: ключи через пробел или точку
+  // с запятой; ключ с «+» или вовсе без префикса — адрес обязан содержать
+  // хотя бы ОДИН такой ключ (список работает как ИЛИ: одна поликлиника редко
+  // подходит под несколько названий сразу); «-ключ» — адрес НЕ должен
+  // содержать ни одного такого ключа. Фраза в кавычках — один ключ-подстрока
+  // (для «ленина, д. 5»); «-» и «+» работают и перед кавычкой: -"шишкин лес",
+  // +"улица Алтайская, д. 13" — фраза целиком становится одним ключом.
+  function parseAddressFilter(s) {
+    const out = { any: [], none: [] };
+    const re = /(-?\+?"[^"]*")|(-?\+?[^";\s]+)/g;
+    let m;
+    while ((m = re.exec(String(s || ''))) !== null) {
+      let body = m[0];
+      let neg = false;
+      if (body.startsWith('-')) { neg = true; body = body.slice(1); }
+      if (body.startsWith('+')) body = body.slice(1);
+      body = body.replace(/^"|"$/g, '').trim().toLowerCase();
+      // Токен без единой буквы или цифры («---», «+», «;») — не ключ, а мусор.
+      if (!body || !/\p{L}|\p{N}/u.test(body)) continue;
+      if (neg) out.none.push(body); else out.any.push(body);
+    }
+    return out;
+  }
+
+  // Подходит ли адрес под строку фильтра (см. parseAddressFilter). Пустой
+  // фильтр (или строка без единого осмысленного токена) пропускает всё —
+  // как и прежний includes() с пустой строкой.
+  function addressMatches(address, s) {
+    const f = parseAddressFilter(s);
+    if (!f.any.length && !f.none.length) return true;
+    const a = String(address || '').toLowerCase();
+    if (f.none.some((kw) => a.includes(kw))) return false;
+    if (!f.any.length) return true;
+    return f.any.some((kw) => a.includes(kw));
+  }
+
   function createFilters(util) {
     const { toMs, slotHHMM, distTo, campus } = util;
 
@@ -194,10 +232,10 @@
       return { ok, rejected };
     }
 
-    return { pickSlots, travelOk, slotComparator };
+    return { pickSlots, travelOk, slotComparator, addressMatches };
   }
 
-  const api = { createFilters };
+  const api = { createFilters, parseAddressFilter, addressMatches };
   if (typeof module === 'object' && module.exports) module.exports = api;
   else { root.EmiasCore = root.EmiasCore || {}; Object.assign(root.EmiasCore, api); }
 })(typeof globalThis !== 'undefined' ? globalThis : this);
@@ -665,7 +703,9 @@
           }
           const address = scheduleAddress(s.json.payload, cr.id);
           if (!address) { addressUnknown++; continue; }
-          if (t.addressContains && !address.toLowerCase().includes(String(t.addressContains).toLowerCase())) { addressMismatch++; continue; }
+          // Фильтр адреса с несколькими ключами («+знамя труда -шишкин», см.
+          // filters.addressMatches) — на месте прежнего одиночного includes().
+          if (t.addressContains && !filters.addressMatches(address, t.addressContains)) { addressMismatch++; continue; }
           const slots = scheduleSlots(s.json.payload, cr.id);
           const picked = filters.pickSlots({
             slots,
@@ -873,7 +913,7 @@
     }));
   }
 
-  function createRunner({ targets, api, session, timer, now, emit, config }) {
+  function createRunner({ targets, api, session, timer, now, emit, config, filters }) {
     // running снова станет true при перезапуске, но старые запросы всё ещё
     // могут ждать ответа. Номер запуска не даёт им продолжить новую охоту.
     let runId = 0;
@@ -975,8 +1015,17 @@
 
     function buildWarnings(t, best, r, appts) {
       const w = [];
-      if (best && t.addressContains && !best.address.toLowerCase().includes(String(t.addressContains).toLowerCase())) {
-        w.push(`Адрес «${best.address}» не содержит «${t.addressContains}»`);
+      // Страховка на случай рассинхронизации: targets.search() уже отбрасывает
+      // кабинеты мимо фильтра адреса, так что сюда лучший кандидат с чужим
+      // адресом дойти не должен. Фильтр умеет несколько ключей («+знамя
+      // -шишкин», см. filters.addressMatches); если filters не передан
+      // (старые тесты собирают раннер без него) — fallback на одиночный
+      // includes(), как до появления мульти-фильтра.
+      const addrOk = filters && filters.addressMatches
+        ? (addr, s) => filters.addressMatches(addr, s)
+        : (addr, s) => addr.toLowerCase().includes(String(s).toLowerCase());
+      if (best && t.addressContains && !addrOk(best.address, t.addressContains)) {
+        w.push(`Адрес «${best.address}» не подошёл под фильтр «${t.addressContains}»`);
       }
       if (best && t.current && !t.anyTime && !t.near && new Date(best.slot.startTime) > new Date(t.current)) {
         w.push('Найденный слот позже текущей записи');
@@ -1480,7 +1529,9 @@
     // channel) — без него делить слот timer не с кем, раннер получает
     // настоящий timer как есть.
     const sharedTimer = channel ? createSharedTimer(timer, now) : null;
-    const runner = M.createRunner({ targets, api, session, timer: sharedTimer ? sharedTimer.tick : timer, now, emit, config: safeConfig });
+    // filters нужен раннеру для страховочного предупреждения «адрес не подошёл
+    // под фильтр» с теми же правилами мульти-фильтра, что и в targets.search().
+    const runner = M.createRunner({ targets, api, session, timer: sharedTimer ? sharedTimer.tick : timer, now, emit, config: safeConfig, filters });
 
     // «Одна активная вкладка». Идентификатор экземпляра — по умолчанию
     // случайный (можно задать явно через instanceId — понадобилось тестам,
@@ -2422,10 +2473,16 @@
       h('input', { type: 'radio', name: 'where-' + option.id, checked: form.where === val, onchange: () => update({ where: val }) }),
       h('span', { text }),
     ])));
-    const addrInput = form.where === 'contains' ? h('input', {
-      type: 'text', value: form.addressContains, placeholder: 'например, Ленина',
-      oninput: (e) => quiet({ addressContains: e.target.value }),
-    }) : null;
+    const addrInput = form.where === 'contains' ? h('div', {}, [
+      h('input', {
+        type: 'text', value: form.addressContains, placeholder: 'например: +знамя труда -шишкин',
+        oninput: (e) => quiet({ addressContains: e.target.value }),
+      }),
+      h('p', {
+        class: 'esh-note',
+        text: 'Несколько ключей через пробел или «;». «+» или без знака — подойдёт адрес с любым из них; «-» — исключить адрес. Фраза в кавычках считается одним ключом.',
+      }),
+    ]) : null;
     return h('div', {}, [group, addrInput]);
   }
 
@@ -2485,7 +2542,16 @@
 
   function stepTwoError(option, form) {
     if (form.when === 'onlyDay' && !form.day) return 'выберите день';
-    if (form.where === 'contains' && !form.addressContains.trim()) return 'укажите часть адреса';
+    if (form.where === 'contains') {
+      if (!form.addressContains.trim()) return 'укажите часть адреса';
+      // Строка непустая, но осмысленных ключей в ней нет (например, «---» или
+      // только «+») — фильтр получится пустым и молча пропустит все адреса.
+      // EmiasCore может отсутствовать (старые тесты подставляют заглушку) —
+      // тогда считаем непустую строку валидной.
+      const { parseAddressFilter } = globalThis.EmiasCore || {};
+      const f = parseAddressFilter ? parseAddressFilter(form.addressContains) : { any: ['x'], none: [] };
+      if (!f.any.length && !f.none.length) return 'укажите хотя бы один ключ адреса';
+    }
     return null;
   }
 

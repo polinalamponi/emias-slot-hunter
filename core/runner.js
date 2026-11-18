@@ -35,7 +35,7 @@
     }));
   }
 
-  function createRunner({ targets, api, session, timer, now, emit, config }) {
+  function createRunner({ targets, api, session, timer, now, emit, config, filters }) {
     // running снова станет true при перезапуске, но старые запросы всё ещё
     // могут ждать ответа. Номер запуска не даёт им продолжить новую охоту.
     let runId = 0;
@@ -137,8 +137,17 @@
 
     function buildWarnings(t, best, r, appts) {
       const w = [];
-      if (best && t.addressContains && !best.address.toLowerCase().includes(String(t.addressContains).toLowerCase())) {
-        w.push(`Адрес «${best.address}» не содержит «${t.addressContains}»`);
+      // Страховка на случай рассинхронизации: targets.search() уже отбрасывает
+      // кабинеты мимо фильтра адреса, так что сюда лучший кандидат с чужим
+      // адресом дойти не должен. Фильтр умеет несколько ключей («+знамя
+      // -шишкин», см. filters.addressMatches); если filters не передан
+      // (старые тесты собирают раннер без него) — fallback на одиночный
+      // includes(), как до появления мульти-фильтра.
+      const addrOk = filters && filters.addressMatches
+        ? (addr, s) => filters.addressMatches(addr, s)
+        : (addr, s) => addr.toLowerCase().includes(String(s).toLowerCase());
+      if (best && t.addressContains && !addrOk(best.address, t.addressContains)) {
+        w.push(`Адрес «${best.address}» не подошёл под фильтр «${t.addressContains}»`);
       }
       if (best && t.current && !t.anyTime && !t.near && new Date(best.slot.startTime) > new Date(t.current)) {
         w.push('Найденный слот позже текущей записи');

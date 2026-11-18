@@ -607,10 +607,16 @@
       h('input', { type: 'radio', name: 'where-' + option.id, checked: form.where === val, onchange: () => update({ where: val }) }),
       h('span', { text }),
     ])));
-    const addrInput = form.where === 'contains' ? h('input', {
-      type: 'text', value: form.addressContains, placeholder: 'например, Ленина',
-      oninput: (e) => quiet({ addressContains: e.target.value }),
-    }) : null;
+    const addrInput = form.where === 'contains' ? h('div', {}, [
+      h('input', {
+        type: 'text', value: form.addressContains, placeholder: 'например: +знамя труда -шишкин',
+        oninput: (e) => quiet({ addressContains: e.target.value }),
+      }),
+      h('p', {
+        class: 'esh-note',
+        text: 'Несколько ключей через пробел или «;». «+» или без знака — подойдёт адрес с любым из них; «-» — исключить адрес. Фраза в кавычках считается одним ключом.',
+      }),
+    ]) : null;
     return h('div', {}, [group, addrInput]);
   }
 
@@ -670,7 +676,16 @@
 
   function stepTwoError(option, form) {
     if (form.when === 'onlyDay' && !form.day) return 'выберите день';
-    if (form.where === 'contains' && !form.addressContains.trim()) return 'укажите часть адреса';
+    if (form.where === 'contains') {
+      if (!form.addressContains.trim()) return 'укажите часть адреса';
+      // Строка непустая, но осмысленных ключей в ней нет (например, «---» или
+      // только «+») — фильтр получится пустым и молча пропустит все адреса.
+      // EmiasCore может отсутствовать (старые тесты подставляют заглушку) —
+      // тогда считаем непустую строку валидной.
+      const { parseAddressFilter } = globalThis.EmiasCore || {};
+      const f = parseAddressFilter ? parseAddressFilter(form.addressContains) : { any: ['x'], none: [] };
+      if (!f.any.length && !f.none.length) return 'укажите хотя бы один ключ адреса';
+    }
     return null;
   }
 

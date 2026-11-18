@@ -2,6 +2,44 @@
 (function (root) {
   'use strict';
 
+  // Разбираем строку фильтра адреса на обязательные и запрещённые ключи
+  // (пожелание из issue #1 — поликлиники Новой Москвы разбросаны на десятки
+  // километров, одного ключа мало). Синтаксис: ключи через пробел или точку
+  // с запятой; ключ с «+» или вовсе без префикса — адрес обязан содержать
+  // хотя бы ОДИН такой ключ (список работает как ИЛИ: одна поликлиника редко
+  // подходит под несколько названий сразу); «-ключ» — адрес НЕ должен
+  // содержать ни одного такого ключа. Фраза в кавычках — один ключ-подстрока
+  // (для «ленина, д. 5»); «-» и «+» работают и перед кавычкой: -"шишкин лес",
+  // +"улица Алтайская, д. 13" — фраза целиком становится одним ключом.
+  function parseAddressFilter(s) {
+    const out = { any: [], none: [] };
+    const re = /(-?\+?"[^"]*")|(-?\+?[^";\s]+)/g;
+    let m;
+    while ((m = re.exec(String(s || ''))) !== null) {
+      let body = m[0];
+      let neg = false;
+      if (body.startsWith('-')) { neg = true; body = body.slice(1); }
+      if (body.startsWith('+')) body = body.slice(1);
+      body = body.replace(/^"|"$/g, '').trim().toLowerCase();
+      // Токен без единой буквы или цифры («---», «+», «;») — не ключ, а мусор.
+      if (!body || !/\p{L}|\p{N}/u.test(body)) continue;
+      if (neg) out.none.push(body); else out.any.push(body);
+    }
+    return out;
+  }
+
+  // Подходит ли адрес под строку фильтра (см. parseAddressFilter). Пустой
+  // фильтр (или строка без единого осмысленного токена) пропускает всё —
+  // как и прежний includes() с пустой строкой.
+  function addressMatches(address, s) {
+    const f = parseAddressFilter(s);
+    if (!f.any.length && !f.none.length) return true;
+    const a = String(address || '').toLowerCase();
+    if (f.none.some((kw) => a.includes(kw))) return false;
+    if (!f.any.length) return true;
+    return f.any.some((kw) => a.includes(kw));
+  }
+
   function createFilters(util) {
     const { toMs, slotHHMM, distTo, campus } = util;
 
@@ -89,10 +127,10 @@
       return { ok, rejected };
     }
 
-    return { pickSlots, travelOk, slotComparator };
+    return { pickSlots, travelOk, slotComparator, addressMatches };
   }
 
-  const api = { createFilters };
+  const api = { createFilters, parseAddressFilter, addressMatches };
   if (typeof module === 'object' && module.exports) module.exports = api;
   else { root.EmiasCore = root.EmiasCore || {}; Object.assign(root.EmiasCore, api); }
 })(typeof globalThis !== 'undefined' ? globalThis : this);
