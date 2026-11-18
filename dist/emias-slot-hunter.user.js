@@ -892,6 +892,7 @@
       staleNotified: false,
       pending: {},
       verifyFailedKey: {},
+      lastNotes: new Map(),
       leadershipHandlers: [],
     };
 
@@ -905,6 +906,7 @@
       state.byId = {};
       state.pending = {};
       state.verifyFailedKey = {};
+      state.lastNotes.clear();
       for (const t of state.list) state.byId[t.id] = { state: 'idle', note: '' };
       // Смена целей обнуляет подтверждение холостого прогона — иначе можно
       // было бы подтвердить одни цели, а незаметно подставить другие.
@@ -1252,10 +1254,17 @@
             }
 
             if (!r.candidates.length) {
-              if (r.notes && r.notes.length) log(`${t.title}: ${r.notes.join('; ')}`);
+              const note = (r.notes || []).join('; ');
+              if (!note) {
+                state.lastNotes.delete(t.id);
+              } else if (state.lastNotes.get(t.id) !== note) {
+                state.lastNotes.set(t.id, note);
+                log(`${t.title}: ${note}`);
+              }
               continue;
             }
 
+            state.lastNotes.delete(t.id);
             const cand = r.candidates[0];
             const key = candidateKey(cand);
             const vf = state.verifyFailedKey[t.id];
