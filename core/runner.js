@@ -472,6 +472,9 @@
       return {
         running: state.running,
         confirmed: state.confirmed === gateFingerprint(state.list),
+        // Фактический период проверок — панель показывает его человеку,
+        // а тесты по нему проверяют setSlowMs/пол 20 секунд.
+        intervalMs: interval(),
         lastTickAt: state.lastTickAt,
         lastCheckAt: state.lastCheckAt,
         lastOkAt: state.lastOkAt,

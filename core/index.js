@@ -288,6 +288,11 @@
         return { ok: true };
       },
       stop: () => { stopAlive(); return runner.stop(); },
+      // Период проверок (мс) меняется на ходу: runner читает slowMs из config
+      // перед каждым планированием тика, поэтому новое значение применяется
+      // уже со следующей проверки. Ниже пола 20 секунд не опустится — пол
+      // проверяется и здесь, и в runner.interval().
+      setSlowMs: (ms) => { safeConfig.slowMs = Math.max(MIN_INTERVAL_MS, Number(ms) || 0); },
       answer: (targetId, decision) => runner.answer(targetId, decision),
       status: () => runner.status(),
       leaderSeenAt: () => leaderSeenAtTs,

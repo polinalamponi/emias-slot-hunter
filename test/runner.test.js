@@ -826,3 +826,21 @@ test('запись на анализ по назначению узнаётся 
   assert.equal(h.seen[0].scenario, 'shiftLab');
   assert.equal(h.seen[0].appointmentId, 77);
 });
+
+test('status показывает фактический период проверок и живо реагирует на slowMs', () => {
+  const config = { slowMs: 60000, minIntervalMs: 20000 };
+  const runner = createRunner({
+    targets: { search: async () => ({ candidates: [], rejected: [], notes: [] }), act: async () => ({ ok: true, verified: true }) },
+    api: { post: async () => ({ ok: true, json: { payload: { appointment: [] } } }), backoffUntil: () => 0 },
+    session: { needsRefresh: () => false, refreshedAt: 0 },
+    timer: { schedule: () => {}, cancel: () => {} },
+    now: () => 0,
+    emit: () => {},
+    config,
+  });
+  assert.equal(runner.status().intervalMs, 60000);
+  // setSlowMs в core/index.js меняет именно этот объект config — интервал
+  // применяется со следующей проверки без пересоздания раннера.
+  config.slowMs = 30000;
+  assert.equal(runner.status().intervalMs, 30000);
+});
