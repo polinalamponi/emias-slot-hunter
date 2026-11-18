@@ -1,7 +1,7 @@
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
 const { createUtil } = require('../core/util.js');
-const { createFilters } = require('../core/filters.js');
+const { createFilters, parseAddressFilter, addressMatches } = require('../core/filters.js');
 
 const util = createUtil();
 const f = createFilters(util);
@@ -101,4 +101,61 @@ test('onlyIfConflict: при пересечении с другой запись
   const r = f.pickSlots({ slots: [slot('2026-09-25T16:00:00+03:00')], target: t, now: NOW, appointments: appts, addressOf: () => 'улица Тестовая, д. 1' });
   assert.equal(r.ok.length, 1);
   assert.equal(r.skipped, undefined);
+});
+
+/* ==================== мульти-фильтр адреса ==================== */
+
+test('parseAddressFilter: ключи с +, без префикса, с - и через точку с запятой', () => {
+  assert.deepEqual(parseAddressFilter('+фабрики -шишкин; -щапово знамя'), {
+    any: ['фабрики', 'знамя'], none: ['шишкин', 'щапово'],
+  });
+});
+
+test('parseAddressFilter: кавычки склеивают фразу в один ключ, минус работает и перед кавычкой', () => {
+  assert.deepEqual(parseAddressFilter('"ленина, д. 5" -"шишкин лес"'), {
+    any: ['ленина, д. 5'], none: ['шишкин лес'],
+  });
+});
+
+test('parseAddressFilter: плюс перед кавычками — фраза целиком как включение', () => {
+  assert.deepEqual(parseAddressFilter('+"улица Алтайская, д. 13" -шишкин'), {
+    any: ['улица алтайская, д. 13'], none: ['шишкин'],
+  });
+  assert.equal(addressMatches('улица Алтайская, д. 13, стр. 2', '+"улица Алтайская, д. 13"'), true);
+  assert.equal(addressMatches('улица Алтайская, д. 3', '+"улица Алтайская, д. 13"'), false);
+});
+
+test('parseAddressFilter: пустая строка и мусор дают пустые списки', () => {
+  assert.deepEqual(parseAddressFilter(''), { any: [], none: [] });
+  assert.deepEqual(parseAddressFilter(null), { any: [], none: [] });
+  assert.deepEqual(parseAddressFilter('+ -  ---  ; ;'), { any: [], none: [] });
+});
+
+test('addressMatches: достаточно совпадения с любым из ключей-включений (ИЛИ)', () => {
+  assert.equal(addressMatches('посёлок Знамя труда, д. 1', '+фабрики +знамя'), true);
+  assert.equal(addressMatches('посёлок Фабрики, д. 1', '+фабрики +знамя'), true);
+  assert.equal(addressMatches('улица Тестовая, д. 2', '+фабрики +знамя'), false);
+});
+
+test('addressMatches: любой запрещённый ключ исключает адрес', () => {
+  assert.equal(addressMatches('посёлок Шишкин лес', '+знамя -шишкин'), false);
+  assert.equal(addressMatches('шишкин', '-шишкин -щапово'), false);
+  assert.equal(addressMatches('улица Тестовая, д. 2', '-шишкин'), true);
+});
+
+test('addressMatches: только исключения — адрес без них проходит', () => {
+  assert.equal(addressMatches('улица Тестовая, д. 2', '-шишкин -щапово'), true);
+});
+
+test('addressMatches: пустой фильтр пропускает всё, регистр не важен', () => {
+  assert.equal(addressMatches('улица Тестовая, д. 2', ''), true);
+  assert.equal(addressMatches('', ''), true);
+  assert.equal(addressMatches('улица ТЕСТОВАЯ', 'тестовая'), true);
+  assert.equal(addressMatches(null, 'тестовая'), false);
+  assert.equal(addressMatches(null, ''), true);
+});
+
+test('addressMatches: одиночный ключ ведёт себя как прежний includes()', () => {
+  assert.equal(addressMatches('улица Тестовая, д. 2', 'Тестовая, д. 2'), true);
+  assert.equal(addressMatches('улица Тестовая, д. 2', 'к. 28'), false);
 });
