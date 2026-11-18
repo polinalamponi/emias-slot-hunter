@@ -131,6 +131,7 @@
       const candidates = [];
       let rejected = [];
       let addressMismatch = 0;
+      const skippedAddresses = new Set();
       let addressUnknown = 0;
       // C2: без этой проверки цикл продолжал бы слать getAvailableResourceScheduleInfo
       // по всем оставшимся кабинетам/врачам даже после того, как ЕМИАС уже ответил 429 —
@@ -160,7 +161,11 @@
           if (!address) { addressUnknown++; continue; }
           // Фильтр адреса с несколькими ключами («+знамя труда -шишкин», см.
           // filters.addressMatches) — на месте прежнего одиночного includes().
-          if (t.addressContains && !filters.addressMatches(address, t.addressContains)) { addressMismatch++; continue; }
+          if (t.addressContains && !filters.addressMatches(address, t.addressContains)) {
+            addressMismatch++;
+            skippedAddresses.add(address);
+            continue;
+          }
           const slots = scheduleSlots(s.json.payload, cr.id);
           const picked = filters.pickSlots({
             slots,
@@ -179,7 +184,7 @@
       if (addressUnknown) notes.push(`Не удалось определить адрес ${addressUnknown} кабинет(ов) в расписании — пропущены`);
       if (addressMismatch) notes.push(`Кабинетов с другим адресом пропущено: ${addressMismatch}`);
       if (pausedByBackoff) notes.push('ЕМИАС попросил паузу — часть кабинетов не проверена, продолжу на следующей проверке');
-      return { candidates, rejected, notes, action };
+      return { candidates, rejected, notes, action, skippedAddresses: [...skippedAddresses] };
     }
 
     // Проверяем, что найденная в списке запись — действительно та, что мы только что

@@ -193,6 +193,7 @@
           waiting: !best,
           warnings: buildWarnings(t, best, r, appts),
           notes: r.notes,
+          skippedAddresses: r.skippedAddresses || [],
         });
       }
       const report = { id: hash({ list: state.list, at: now() }), items, targetsHash: gateFingerprint(state.list) };

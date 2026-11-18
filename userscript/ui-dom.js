@@ -747,6 +747,19 @@
       const warn = line.trim().startsWith('⚠');
       box.appendChild(h('p', { class: warn ? 'esh-warn' : 'esh-note', text: line.trim() }));
     }
+    if (item.skippedAddresses && item.skippedAddresses.length && wizard.forms[item.targetId]) {
+      box.appendChild(h('p', { class: 'esh-note', text: 'Отсеянные адреса. Выберите адрес для повторной проверки:' }));
+      box.appendChild(h('div', {}, item.skippedAddresses.map((address) => h('button', {
+        class: 'esh-btn',
+        text: address,
+        onclick: () => {
+          const form = wizard.forms[item.targetId];
+          form.where = 'contains';
+          form.addressContains = '+"' + address.replaceAll('"', '') + '"';
+          loadStep3();
+        },
+      }))));
+    }
     return box;
   }
 

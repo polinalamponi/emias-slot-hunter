@@ -676,6 +676,7 @@
       const candidates = [];
       let rejected = [];
       let addressMismatch = 0;
+      const skippedAddresses = new Set();
       let addressUnknown = 0;
       // C2: без этой проверки цикл продолжал бы слать getAvailableResourceScheduleInfo
       // по всем оставшимся кабинетам/врачам даже после того, как ЕМИАС уже ответил 429 —
@@ -705,7 +706,11 @@
           if (!address) { addressUnknown++; continue; }
           // Фильтр адреса с несколькими ключами («+знамя труда -шишкин», см.
           // filters.addressMatches) — на месте прежнего одиночного includes().
-          if (t.addressContains && !filters.addressMatches(address, t.addressContains)) { addressMismatch++; continue; }
+          if (t.addressContains && !filters.addressMatches(address, t.addressContains)) {
+            addressMismatch++;
+            skippedAddresses.add(address);
+            continue;
+          }
           const slots = scheduleSlots(s.json.payload, cr.id);
           const picked = filters.pickSlots({
             slots,
@@ -724,7 +729,7 @@
       if (addressUnknown) notes.push(`Не удалось определить адрес ${addressUnknown} кабинет(ов) в расписании — пропущены`);
       if (addressMismatch) notes.push(`Кабинетов с другим адресом пропущено: ${addressMismatch}`);
       if (pausedByBackoff) notes.push('ЕМИАС попросил паузу — часть кабинетов не проверена, продолжу на следующей проверке');
-      return { candidates, rejected, notes, action };
+      return { candidates, rejected, notes, action, skippedAddresses: [...skippedAddresses] };
     }
 
     // Проверяем, что найденная в списке запись — действительно та, что мы только что
@@ -1071,6 +1076,7 @@
           waiting: !best,
           warnings: buildWarnings(t, best, r, appts),
           notes: r.notes,
+          skippedAddresses: r.skippedAddresses || [],
         });
       }
       const report = { id: hash({ list: state.list, at: now() }), items, targetsHash: gateFingerprint(state.list) };
@@ -2612,6 +2618,19 @@
     for (const line of rest) {
       const warn = line.trim().startsWith('⚠');
       box.appendChild(h('p', { class: warn ? 'esh-warn' : 'esh-note', text: line.trim() }));
+    }
+    if (item.skippedAddresses && item.skippedAddresses.length && wizard.forms[item.targetId]) {
+      box.appendChild(h('p', { class: 'esh-note', text: 'Отсеянные адреса. Выберите адрес для повторной проверки:' }));
+      box.appendChild(h('div', {}, item.skippedAddresses.map((address) => h('button', {
+        class: 'esh-btn',
+        text: address,
+        onclick: () => {
+          const form = wizard.forms[item.targetId];
+          form.where = 'contains';
+          form.addressContains = '+"' + address.replaceAll('"', '') + '"';
+          loadStep3();
+        },
+      }))));
     }
     return box;
   }

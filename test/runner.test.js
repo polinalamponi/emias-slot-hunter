@@ -826,3 +826,15 @@ test('запись на анализ по назначению узнаётся 
   assert.equal(h.seen[0].scenario, 'shiftLab');
   assert.equal(h.seen[0].appointmentId, 77);
 });
+
+test('dryRun отдаёт в отчёте адреса мимо фильтра для кликабельных подсказок', async () => {
+  const h = harness({
+    search: async () => ({
+      candidates: [], rejected: [], notes: [],
+      skippedAddresses: ['улица Алтайская, д. 13'],
+    }),
+  });
+  h.runner.setTargets([{ ...target }]);
+  const report = await h.runner.dryRun();
+  assert.deepEqual(report.items[0].skippedAddresses, ['улица Алтайская, д. 13']);
+});
