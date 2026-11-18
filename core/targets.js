@@ -158,7 +158,9 @@
           }
           const address = scheduleAddress(s.json.payload, cr.id);
           if (!address) { addressUnknown++; continue; }
-          if (t.addressContains && !address.toLowerCase().includes(String(t.addressContains).toLowerCase())) { addressMismatch++; continue; }
+          // Фильтр адреса с несколькими ключами («+знамя труда -шишкин», см.
+          // filters.addressMatches) — на месте прежнего одиночного includes().
+          if (t.addressContains && !filters.addressMatches(address, t.addressContains)) { addressMismatch++; continue; }
           const slots = scheduleSlots(s.json.payload, cr.id);
           const picked = filters.pickSlots({
             slots,

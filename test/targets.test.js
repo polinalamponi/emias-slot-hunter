@@ -577,3 +577,16 @@ test('перенос приёма врача: запись к другому с�
   const r = await t.act(target, shiftCand, { now: NOW, appointments: [] });
   assert.equal(r.verified, false);
 });
+
+test('мульти-фильтр адреса: включение через + и исключение через - работают вместе', async () => {
+  const api = fakeApi([['getDoctorsInfoForLI', { ok: true, json: doctorsLi }], ['getAvailableResourceScheduleInfo', { ok: true, json: schedule }]]);
+  const t = createTargets({ api, filters, util });
+  // Адрес кабинета в фикстуре — «улица Тестовая, д. 2»: проходит «+Тестовая»,
+  // исключение «-шишкин» его не задевает; наборы без совпадений не оставляют ничего.
+  const ok = await t.search({ ...labTarget, addressContains: '+Тестовая -шишкин' }, { now: NOW, appointments: [] });
+  assert.equal(ok.candidates.length, 2);
+  const none = await t.search({ ...labTarget, addressContains: '+шишкин +знамя' }, { now: NOW, appointments: [] });
+  assert.equal(none.candidates.length, 0);
+  const excl = await t.search({ ...labTarget, addressContains: '-Тестовая' }, { now: NOW, appointments: [] });
+  assert.equal(excl.candidates.length, 0);
+});

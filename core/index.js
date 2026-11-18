@@ -138,7 +138,9 @@
     // channel) — без него делить слот timer не с кем, раннер получает
     // настоящий timer как есть.
     const sharedTimer = channel ? createSharedTimer(timer, now) : null;
-    const runner = M.createRunner({ targets, api, session, timer: sharedTimer ? sharedTimer.tick : timer, now, emit, config: safeConfig });
+    // filters нужен раннеру для страховочного предупреждения «адрес не подошёл
+    // под фильтр» с теми же правилами мульти-фильтра, что и в targets.search().
+    const runner = M.createRunner({ targets, api, session, timer: sharedTimer ? sharedTimer.tick : timer, now, emit, config: safeConfig, filters });
 
     // «Одна активная вкладка». Идентификатор экземпляра — по умолчанию
     // случайный (можно задать явно через instanceId — понадобилось тестам,
