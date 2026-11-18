@@ -206,3 +206,15 @@ test('одна активная вкладка: вкладка без подтв
   assert.equal(a.status().running, true, 'работающая вкладка не должна была остановиться');
   assert.equal(standbyA.length, 0, 'claim от вкладки, не прошедшей гейт, вообще не должен был уйти в канал');
 });
+
+test('setSlowMs меняет период проверок и уважает пол 20 секунд', async () => {
+  const e = env();
+  const h = create({ storage: e.storage, fetch: e.fetchFn, now: () => Date.parse('2026-09-23T06:00:00Z'), timer: e.timer, channel: null, modules });
+  await h.init({ identity: { oms: OMS, birth: '2000-01-01' } });
+  h.setSlowMs(45000);
+  assert.equal(h.status().intervalMs, 45000);
+  h.setSlowMs(1000); // ниже пола — остаётся 20 секунд
+  assert.equal(h.status().intervalMs, 20000);
+  h.setSlowMs(300000); // верх ползунка — 5 минут
+  assert.equal(h.status().intervalMs, 300000);
+});

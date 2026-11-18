@@ -1268,6 +1268,9 @@
       return {
         running: state.running,
         confirmed: state.confirmed === gateFingerprint(state.list),
+        // Фактический период проверок — панель показывает его человеку,
+        // а тесты по нему проверяют setSlowMs/пол 20 секунд.
+        intervalMs: interval(),
         lastTickAt: state.lastTickAt,
         lastCheckAt: state.lastCheckAt,
         lastOkAt: state.lastOkAt,
@@ -1588,6 +1591,11 @@
         return { ok: true };
       },
       stop: () => { stopAlive(); return runner.stop(); },
+      // Период проверок (мс) меняется на ходу: runner читает slowMs из config
+      // перед каждым планированием тика, поэтому новое значение применяется
+      // уже со следующей проверки. Ниже пола 20 секунд не опустится — пол
+      // проверяется и здесь, и в runner.interval().
+      setSlowMs: (ms) => { safeConfig.slowMs = Math.max(MIN_INTERVAL_MS, Number(ms) || 0); },
       answer: (targetId, decision) => runner.answer(targetId, decision),
       status: () => runner.status(),
       leaderSeenAt: () => leaderSeenAtTs,
@@ -2208,7 +2216,8 @@
     clear(dom.panel);
     dom.panel.appendChild(h('h3', { text: 'Что сейчас происходит' }));
     // M-1: время берём из lastCheckAt — его ставит только настоящая проверка.
-    dom.panel.appendChild(h('p', { class: 'esh-note', text: `Последняя проверка: ${st.lastCheckAt ? hhmm(st.lastCheckAt) : 'ещё не было'}` }));
+    dom.panel.appendChild(h('p', { class: 'esh-note', text: `Последняя проверка: ${st.lastCheckAt ? hhmm(st.lastCheckAt) : 'ещё не было'}`
+      + (st.intervalMs ? ` · период: ${humanInterval(Math.round(st.intervalMs / 1000))}` : '') }));
     dom.panel.appendChild(h('div', {}, lines));
     const logBox = renderLog(logEvents);
     dom.panel.appendChild(logBox);
@@ -2458,9 +2467,44 @@
     renderStep1(wizard.options);
   }
 
+  // Ползунок периода проверок: 30 сек … 5 мин. Общий для всех целей этой
+  // охоты, живёт в настройках (cfg.scanSec, секунды) и применяется на ходу —
+  // со следующей проверки. Нижняя граница ядра (20 сек) остаётся страховкой.
+  function humanInterval(sec) {
+    const m = sec / 60;
+    return sec < 60 ? `${sec} сек` : (Number.isInteger(m) ? `${m} мин` : `${m.toFixed(1).replace('.', ',')} мин`);
+  }
+
+  function applyScanInterval() {
+    const cfg = ui.loadConfig(storage);
+    const sec = Math.min(300, Math.max(30, Number(cfg && cfg.scanSec) || 60));
+    core.setSlowMs(sec * 1000);
+  }
+
+  function scanIntervalRow() {
+    const cfg = ui.loadConfig(storage) || {};
+    const sec = Math.min(300, Math.max(30, Number(cfg.scanSec) || 60));
+    const valEl = h('b', { text: humanInterval(sec) });
+    const slider = h('input', {
+      type: 'range', min: 30, max: 300, step: 30, value: sec,
+      oninput: (e) => {
+        const v = Number(e.target.value);
+        ui.saveConfig(storage, { ...(ui.loadConfig(storage) || {}), scanSec: v });
+        core.setSlowMs(v * 1000);
+        valEl.textContent = humanInterval(v);
+      },
+    });
+    return h('div', { class: 'esh-row' }, [
+      h('span', { class: 'esh-note', text: 'Проверять каждые:' }),
+      slider,
+      valEl,
+    ]);
+  }
+
   function renderStep2(selected) {
     clear(dom.panel);
     dom.panel.appendChild(h('h3', { text: 'Шаг 2 из 3. Условия поиска' }));
+    dom.panel.appendChild(scanIntervalRow());
     dom.panel.appendChild(h('div', {}, selected.map(renderTargetCard)));
     const hasErrors = selected.some((o) => stepTwoError(o, ensureForm(o)));
     const back = h('button', { class: 'esh-btn', text: 'Назад', onclick: backToStep1 });
@@ -2546,14 +2590,16 @@
     }
     try {
       core.confirmDryRun(wizard.report.id);
+      applyScanInterval(); // ползунок с шага 2 — до первого тика
       await core.start();
       // C-1 п.2: новое подтверждение снимает паузу (новый объект настроек
       // без paused/pausedAt).
       ui.saveConfig(storage, { enabled: true, paused: false, targets: wizard.builtTargets, confirmedFor: wizard.report.targetsHash });
       runningFor = wizard.report.targetsHash;
       // Minor: сразу после старта проверок ещё не было — не выдумываем время
-      // последней проверки.
-      setBadge({ kind: 'running', text: '🟢 Ищу слоты', detail: 'первая проверка через минуту' });
+      // последней проверки. Период показываем тот, что выбрал ползунком.
+      const st = core.status();
+      setBadge({ kind: 'running', text: '🟢 Ищу слоты', detail: 'первая проверка через ' + humanInterval(Math.round(st.intervalMs / 1000)) });
       startStatusRefresh();
       openWizard(4);
     } catch (e) {
@@ -3068,6 +3114,7 @@
     }
 
     const cfg = ui.loadConfig(storage);
+    applyScanInterval(); // период из сохранённых настроек — до первого тика
     if (!cfg || !cfg.enabled || !Array.isArray(cfg.targets) || !cfg.targets.length) {
       setBadge({ kind: 'idle', text: '🎯 Настроить', detail: '' });
       return;
