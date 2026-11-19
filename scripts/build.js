@@ -6,7 +6,7 @@ const ROOT = path.join(__dirname, '..');
 const ORDER = [
   'core/util.js', 'core/errors.js', 'core/filters.js', 'core/session.js',
   'core/api.js', 'core/discover.js', 'core/targets.js', 'core/runner.js', 'core/index.js',
-  'userscript/ui-state.js', 'userscript/ui-dom.js',
+  'userscript/ui-state.js', 'userscript/ui-notify.js', 'userscript/ui-dom.js',
 ];
 
 // Из header.js берём только сами строки метаданных (// ==UserScript== / // @…
