@@ -14,7 +14,7 @@
   if (window.__emiasSlotHunterMounted) return;
   window.__emiasSlotHunterMounted = true;
 
-  const { create, createUiState } = globalThis.EmiasCore;
+  const { create, createUiState, createNotifier, saveSettings } = globalThis.EmiasCore;
   const ui = createUiState();
   const storage = window.localStorage;
 
@@ -34,6 +34,7 @@
   };
 
   let core = null;
+  let notifier = null; // уведомления на телефон через ntfy, см. ui-notify.js
   let badgeState = { kind: 'init', text: '…', detail: '' };
   let panelMode = null; // 'wizard' | 'status' | 'recovery' | 'standby' | null
   const logEvents = [];
@@ -400,6 +401,16 @@
     if (panelMode === 'status') renderStatusPanel();
   }
 
+  // Сообщение на телефон через ntfy (если настроено — см. ui-notify.js).
+  // Ошибки доставки — только в лог: уведомление вторично по отношению к
+  // записи, сбой канала не должен выглядеть как сбой охоты.
+  function notifyPhone(event) {
+    if (!notifier) return;
+    notifier.send(event)
+      .then((r) => { if (!r.ok && !r.silent) pushLog({ at: Date.now(), msg: 'Телефон: не доставлено — ' + r.error }); })
+      .catch(() => { /* уже превращено в результат внутри */ });
+  }
+
   function renderLog(events) {
     const box = h('div', { class: 'esh-log' });
     for (const e of events.slice(0, 20)) box.appendChild(h('div', { text: `${hhmm(e.at)} · ${e.msg}` }));
@@ -535,6 +546,40 @@
     return parts.join(' · ') || 'запись по направлению';
   }
 
+  // Настройки уведомлений на телефон (ntfy). Не зависят от целей: живут в
+  // отдельном ключе хранилища и переживают перезапуск охоты. По умолчанию
+  // канал не настроен — без него скрипт ведёт себя как раньше.
+  function notifyBlock() {
+    if (!notifier) return null;
+    const s = notifier.settings();
+    const status = h('p', { class: 'esh-note', text: '' });
+    const setNote = (text, warn) => { status.textContent = text; status.className = warn ? 'esh-warn' : 'esh-note'; };
+    const save = () => { saveSettings(storage, { topic: topicInput.value }); };
+    const topicInput = h('input', { type: 'text', value: s.topic, placeholder: 'случайное имя, например emias-x7k9p2…' });
+    const testBtn = h('button', {
+      class: 'esh-btn primary', text: 'Проверить', onclick: async () => {
+        save();
+        setNote('Отправляю…', false);
+        try {
+          const r = await notifier.test();
+          setNote(r.ok ? 'Отправлено — посмотрите на телефон.' : r.error, !r.ok);
+        } catch (e) { setNote((e && e.message) || 'не удалось', true); }
+      },
+    });
+    return h('details', { class: 'esh-more' }, [
+      h('summary', { text: 'Уведомления на телефон' }),
+      h('label', { class: 'esh-field', text: 'Ваш личный топик ntfy' }),
+      h('div', { class: 'esh-btns' }, [
+        topicInput,
+        h('button', {
+          class: 'esh-btn', text: 'Случайный', onclick: () => { topicInput.value = globalThis.EmiasCore.generateTopic(); save(); setNote('Топик создан. Подпишитесь на него в приложении ntfy, затем нажмите «Проверить».', false); },
+        }),
+      ]),
+      h('p', { class: 'esh-note', text: '1) Поставьте приложение ntfy (ntfy.sh → Apps). 2) В приложении «Subscribe» → впишите это имя топика. 3) Нажмите «Проверить». Сообщение придёт, когда охотник запишет вас, найдёт слот-вопрос или что-то пойдёт не так. Топик — ваш личный ключ: никому его не показывайте и не используйте простые имена, иначе чужие люди будут читать ваши уведомления.' }),
+      status,
+    ]);
+  }
+
   function renderStep1(options) {
     clear(dom.panel);
     dom.panel.appendChild(h('h3', { text: 'Шаг 1 из 3. За чем следить' }));
@@ -543,6 +588,8 @@
     }
     const list = h('div', {}, options.map(renderOptionRow));
     dom.panel.appendChild(list);
+    const nb = notifyBlock();
+    if (nb) dom.panel.appendChild(nb);
     const next = h('button', {
       class: 'esh-btn primary', text: 'Далее', disabled: wizard.selected.length === 0,
       onclick: () => openWizard(2),
@@ -847,6 +894,7 @@
     // и уведомления человек может просто не заметить запрос вовремя.
     const where = payload.address ? ` — ${ui.stripCampus(payload.address)}` : '';
     notify('ЕМИАС: нужно решение', `${payload.title}: ${ui.human(payload.slot.startTime)}${where} — 60 секунд на ответ`);
+    notifyPhone({ kind: 'needConfirm', title: payload.title, time: ui.human(payload.slot.startTime), address: payload.address ? ui.stripCampus(payload.address) : '' });
     const targetId = payload.targetId;
     removeConfirmCard(targetId);
     const tickId = setInterval(() => {
@@ -993,6 +1041,7 @@
   function onBooked(payload) {
     const where = payload.address ? ` — ${ui.stripCampus(payload.address)}` : '';
     notify('ЕМИАС: записано', `${payload.title}: ${ui.human(payload.slot.startTime)}${where}`);
+    notifyPhone({ kind: 'booked', title: payload.title, time: ui.human(payload.slot.startTime), address: payload.address ? ui.stripCampus(payload.address) : '' });
     pushLog({ at: Date.now(), msg: `Записано: ${payload.title} — ${ui.human(payload.slot.startTime)}` });
     // C1: раннер меняет current/source/scenario цели (перенос keepImproving)
     // только у себя в памяти — без этого сохранённые настройки (cfg.targets)
@@ -1053,6 +1102,7 @@
     ui.saveConfig(storage, { ...cfg, enabled: false });
     finishedAll = true;
     notify('ЕМИАС: поиск завершён', 'Все цели выполнены, охотник остановился');
+    notifyPhone({ kind: 'allDone' });
     if (!showBookedBadge()) setBadge({ kind: 'idle', text: '✅ Готово', detail: 'все цели выполнены' });
   }
 
@@ -1067,11 +1117,13 @@
     // Minor: текст payload.message раньше нигде не показывался — теперь он
     // идёт в пояснение к значку (и в панель объяснения, см. renderRecoveryPanel).
     setBadge({ kind: 'sessionLost', text: '🔴 Нужно войти в другой вкладке', detail: (payload && payload.message) || '' });
+    notifyPhone({ kind: 'sessionLost' });
     startRecoveryWatch();
   }
 
   function onStale(payload) {
     setBadge({ kind: 'stale', text: '🔴 Давно нет ответа от ЕМИАС', detail: 'с ' + hhmm(payload.since) });
+    notifyPhone({ kind: 'stale' });
     startRecoveryWatch();
   }
 
@@ -1348,6 +1400,7 @@
     let channel = null;
     try { channel = new BroadcastChannel('emias-slot-hunter'); } catch (e) { channel = null; }
     core = create({ storage, fetch: window.fetch.bind(window), now: () => Date.now(), timer, channel });
+    notifier = createNotifier({ storage, fetch: window.fetch.bind(window) });
     subscribeCore();
     await resumeIfEnabled();
   }
