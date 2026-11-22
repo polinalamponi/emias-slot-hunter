@@ -1772,14 +1772,18 @@
       const deadline = option.deadline || null;
       // Искать за пределами срока действия направления бессмысленно — если человек
       // задал dateTo позже deadline (или deadline вообще не знал), обрезаем по deadline.
-      const dateTo = !form.dateTo ? null : (deadline && deadline < form.dateTo ? deadline : form.dateTo);
+      // Диапазон дат есть только у «как можно раньше»: у «выбранного дня» и
+      // «того же дня» день уже задан, а скрытые старые даты из формы не должны
+      // молча отсекать слоты этого дня.
+      const useDates = !onlyDay;
+      const dateTo = !useDates || !form.dateTo ? null : (deadline && deadline < form.dateTo ? deadline : form.dateTo);
 
       return {
         id: option.id, scenario: option.scenario, title: option.title, source: option.source,
         current: option.current || null,
         onlyDay,
         anyTime,
-        dateFrom: form.dateFrom || null,
+        dateFrom: (useDates && form.dateFrom) || null,
         dateTo,
         deadline,
         timeFrom: form.timeFrom || null,
@@ -2217,7 +2221,9 @@
       .esh-slept[hidden] { display: none; }
       .esh-log { font-size: 12px; max-height: 160px; overflow: auto; background: #fafafa; border: 1px solid #eee; border-radius: 6px; padding: 6px; }
       .esh-log div { margin-bottom: 4px; }
-      details.esh-more summary { cursor: pointer; font-size: 12px; color: #2e7dd7; margin-top: 6px; }
+      .esh-range { display: flex; align-items: center; gap: 6px; margin: 4px 0 2px; font-size: 13px; }
+      .esh-range > span { flex: none; color: #444; }
+      .esh-card .esh-range input[type=date], .esh-card .esh-range input[type=time] { flex: 1; min-width: 0; margin-top: 0; }
     `;
   }
 
@@ -2576,16 +2582,27 @@
     const opts = [
       ['earlier', option.current ? 'раньше, чем сейчас записано' : 'как можно раньше'],
       ...(option.current ? [['sameDayEarlier', 'в тот же день, но раньше']] : []),
-      ['onlyDay', 'в выбранный день, в любое время'],
+      ['onlyDay', 'в выбранный день'],
     ];
     const group = h('div', {}, opts.map(([val, text]) => h('label', { class: 'esh-row' }, [
       h('input', { type: 'radio', name: 'when-' + option.id, checked: form.when === val, onchange: () => update({ when: val }) }),
       h('span', { text }),
     ])));
-    const dayInput = form.when === 'onlyDay' ? h('input', {
-      type: 'date', value: form.day, onchange: (e) => quiet({ day: e.target.value }),
-    }) : null;
-    return h('div', {}, [group, dayInput]);
+    // Даты и время раньше прятались в свёрнутый блок «Дополнительно» внизу —
+    // их не замечали. Теперь они прямо в «Когда»: диапазон дат — для «как
+    // можно раньше» (у «выбранного дня» и «того же дня» день уже задан),
+    // время — для любого варианта.
+    const input = (type, key) => h('input', { type, value: form[key], onchange: (e) => quiet({ [key]: e.target.value }) });
+    const range = (label, from, to, fromWord, toWord) => h('div', {}, [
+      h('label', { class: 'esh-field', text: label }),
+      h('div', { class: 'esh-range' }, [h('span', { text: fromWord }), from, h('span', { text: toWord }), to]),
+    ]);
+    const dayInput = form.when === 'onlyDay' ? input('date', 'day') : null;
+    const dates = form.when === 'earlier'
+      ? range('Даты — по желанию', input('date', 'dateFrom'), input('date', 'dateTo'), 'с', 'по') : null;
+    const times = range('Время приёма — по желанию, например только утром: до 10:00',
+      input('time', 'timeFrom'), input('time', 'timeTo'), 'с', 'до');
+    return h('div', {}, [group, dayInput, dates, times]);
   }
 
   function whereField(option, form, update, quiet) {
@@ -2609,21 +2626,6 @@
       }),
     ]) : null;
     return h('div', {}, [group, addrInput]);
-  }
-
-  function advancedFields(form, quiet) {
-    const field = (label, type, key) => h('label', { class: 'esh-field' }, [
-      label, h('input', { type, value: form[key], onchange: (e) => quiet({ [key]: e.target.value }) }),
-    ]);
-    // Раскрыт ли блок, помним в форме: шаг перерисовывается при выборе любого
-    // переключателя, и без этого блок каждый раз схлопывался заново.
-    return h('details', { class: 'esh-more', open: !!form.moreOpen, ontoggle: (e) => { form.moreOpen = e.target.open; } }, [
-      h('summary', { text: 'Дополнительно: даты и время' }),
-      field('Не раньше какого дня', 'date', 'dateFrom'),
-      field('Не позже какого дня', 'date', 'dateTo'),
-      field('Время не раньше', 'time', 'timeFrom'),
-      field('Время не позже', 'time', 'timeTo'),
-    ]);
   }
 
   function renderTargetCard(option) {
@@ -2669,7 +2671,6 @@
         h('span', { text: 'искать ещё раньше и переносить запись' }),
       ]),
     ]));
-    card.appendChild(advancedFields(form, quiet));
     const error = stepTwoError(option, form);
     const errorEl = h('p', { class: 'esh-warn', text: error || '', hidden: !error });
     errorEl.dataset.optionId = option.id;
@@ -2679,6 +2680,8 @@
 
   function stepTwoError(option, form) {
     if (form.when === 'onlyDay' && !form.day) return 'выберите день';
+    if (form.when === 'earlier' && form.dateFrom && form.dateTo && form.dateFrom > form.dateTo) return 'дата «с» позже даты «по»';
+    if (form.timeFrom && form.timeTo && form.timeFrom > form.timeTo) return 'время «с» позже времени «до»';
     if (form.where === 'contains') {
       if (!form.addressContains.trim()) return 'укажите часть адреса';
       // Строка непустая, но осмысленных ключей в ней нет (например, «---» или

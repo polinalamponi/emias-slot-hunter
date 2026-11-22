@@ -206,3 +206,13 @@ test('shouldShowThanks: не чаще раза в 3 дня, после «Уго�
   assert.equal(ui.shouldShowThanks({ donatedAt: now - 30 * DAY, shownAt: now - 30 * DAY }, now), false, 'перевели месяц назад');
   assert.equal(ui.shouldShowThanks({ donatedAt: now - 91 * DAY, shownAt: now - 91 * DAY }, now), true, 'прошло 3 месяца');
 });
+
+test('buildTarget: у «выбранного дня» диапазон дат не применяется, время — применяется', () => {
+  const t = ui.buildTarget(option, { when: 'onlyDay', day: '2026-10-05', where: 'any', mode: 'auto',
+    dateFrom: '2026-10-10', dateTo: '2026-10-20', timeFrom: '08:00', timeTo: '10:00' });
+  assert.equal(t.onlyDay, '2026-10-05');
+  assert.equal(t.dateFrom, null, 'старое «с» из формы не отсекает выбранный день');
+  assert.equal(t.dateTo, null);
+  assert.equal(t.timeFrom, '08:00');
+  assert.equal(t.timeTo, '10:00');
+});

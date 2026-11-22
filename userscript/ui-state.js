@@ -44,14 +44,18 @@
       const deadline = option.deadline || null;
       // Искать за пределами срока действия направления бессмысленно — если человек
       // задал dateTo позже deadline (или deadline вообще не знал), обрезаем по deadline.
-      const dateTo = !form.dateTo ? null : (deadline && deadline < form.dateTo ? deadline : form.dateTo);
+      // Диапазон дат есть только у «как можно раньше»: у «выбранного дня» и
+      // «того же дня» день уже задан, а скрытые старые даты из формы не должны
+      // молча отсекать слоты этого дня.
+      const useDates = !onlyDay;
+      const dateTo = !useDates || !form.dateTo ? null : (deadline && deadline < form.dateTo ? deadline : form.dateTo);
 
       return {
         id: option.id, scenario: option.scenario, title: option.title, source: option.source,
         current: option.current || null,
         onlyDay,
         anyTime,
-        dateFrom: form.dateFrom || null,
+        dateFrom: (useDates && form.dateFrom) || null,
         dateTo,
         deadline,
         timeFrom: form.timeFrom || null,
