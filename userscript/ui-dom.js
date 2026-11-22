@@ -681,12 +681,12 @@
     ])));
     const addrInput = form.where === 'contains' ? h('div', {}, [
       h('input', {
-        type: 'text', value: form.addressContains, placeholder: 'например: +знамя труда -шишкин',
+        type: 'text', value: form.addressContains, placeholder: 'например: Ленина или +знамя труда -шишкин',
         oninput: (e) => quiet({ addressContains: e.target.value }),
       }),
       h('p', {
         class: 'esh-note',
-        text: 'Несколько ключей через пробел или «;». «+» или без знака — подойдёт адрес с любым из них; «-» — исключить адрес. Фраза в кавычках считается одним ключом.',
+        text: 'Можно несколько: каждый вариант начните с «+», а то, что исключить, — с «-». Например: +знамя труда +остафьево -шишкин. Подойдёт адрес с любым из «+» и без всех «-». Пробел внутри варианта его не делит.',
       }),
     ]) : null;
     return h('div', {}, [group, addrInput]);

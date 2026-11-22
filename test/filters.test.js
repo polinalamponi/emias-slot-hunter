@@ -106,9 +106,28 @@ test('onlyIfConflict: при пересечении с другой запись
 /* ==================== мульти-фильтр адреса ==================== */
 
 test('parseAddressFilter: ключи с +, без префикса, с - и через точку с запятой', () => {
-  assert.deepEqual(parseAddressFilter('+фабрики -шишкин; -щапово знамя'), {
+  assert.deepEqual(parseAddressFilter('+фабрики -шишкин; -щапово; знамя'), {
     any: ['фабрики', 'знамя'], none: ['шишкин', 'щапово'],
   });
+});
+
+test('parseAddressFilter: пробел ключи не делит — несколько слов остаются одной фразой', () => {
+  assert.deepEqual(parseAddressFilter('+знамя труда -шишкин лес'), { any: ['знамя труда'], none: ['шишкин лес'] });
+  assert.deepEqual(parseAddressFilter('улица Тестовая, д. 2'), { any: ['улица тестовая, д. 2'], none: [] });
+  // Дефис в слове и « - » с пробелами вокруг — не начало исключения.
+  assert.deepEqual(parseAddressFilter('Ново-Переделкино'), { any: ['ново-переделкино'], none: [] });
+  assert.deepEqual(parseAddressFilter('д. 5 - стр. 1'), { any: ['д. 5 - стр. 1'], none: [] });
+});
+
+// Регрессия: «в этом же здании» кладёт в фильтр адрес целиком. Если бы пробел
+// делил его на ключи «ИЛИ», под «улица … д. 2» подошли бы чужие здания.
+test('addressMatches: полный адрес («в этом же здании») не пропускает другие здания', () => {
+  const same = 'улица Тестовая, д. 2';
+  assert.equal(addressMatches('улица Тестовая, д. 2', same), true);
+  assert.equal(addressMatches('улица Тестовая, д. 2, стр. 1', same), true);
+  assert.equal(addressMatches('проспект Мира, д. 12', same), false);
+  assert.equal(addressMatches('улица Тестовая, д. 3', same), false);
+  assert.equal(addressMatches('улица Ленина, д. 2', same), false);
 });
 
 test('parseAddressFilter: кавычки склеивают фразу в один ключ, минус работает и перед кавычкой', () => {
