@@ -292,6 +292,8 @@
       .esh-status-target { margin-bottom: 8px; }
       .esh-status-target p { margin: 2px 0; }
       .esh-thanks { width: 300px; max-width: calc(100vw - 32px); box-sizing: border-box; background: #eef8ee; border: 1px solid #8cc58c; border-radius: 10px; padding: 10px; margin-bottom: 8px; box-shadow: 0 2px 10px rgba(0,0,0,.2); font-size: 13px; color: #222; }
+      .esh-thanks p { margin: 0 0 6px; }
+      .esh-thanks .esh-btns { margin-top: 8px; }
       .esh-thanks a.esh-btn { text-align: center; text-decoration: none; }
       .esh-confirm { width: 300px; max-width: calc(100vw - 32px); box-sizing: border-box; background: #fff8ea; border: 1px solid #e0b84b; border-radius: 10px; padding: 10px; margin-bottom: 8px; box-shadow: 0 2px 10px rgba(0,0,0,.2); }
       .esh-slept { width: 300px; background: #eef2ff; border: 1px solid #98a6e0; border-radius: 10px; padding: 10px; display: flex; justify-content: space-between; gap: 8px; }
