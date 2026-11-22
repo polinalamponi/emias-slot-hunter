@@ -669,12 +669,12 @@
       ['range', 'в выбранные даты'],
     ];
     // Даты и время раньше прятались в свёрнутый блок «Дополнительно» внизу —
-    // их не замечали. Теперь они под пунктом «в выбранные даты», как поле
-    // адреса под «адрес содержит»: один день — одна дата в обоих полях,
-    // время не указано — любое время (см. ui.normalizeForm).
+    // их не замечали. Даты — под пунктом «в выбранные даты» (как поле адреса
+    // под «адрес содержит»), время — отдельной строкой для любого варианта:
+    // «в любой день, но после 18:00» — частый случай (см. ui.normalizeForm).
     const input = (type, key) => h('input', { type, value: form[key], onchange: (e) => quiet({ [key]: e.target.value }) });
-    const range = (from, to, label, fromWord, toWord) => h('div', { class: 'esh-range' }, [
-      h('span', { text: label }), h('span', { text: fromWord }), from, h('span', { text: toWord }), to,
+    const range = (label, from, to, toWord) => h('div', { class: 'esh-range' }, [
+      h('span', { text: label }), from, h('span', { text: toWord }), to,
     ]);
     const rows = [];
     for (const [val, text] of opts) {
@@ -682,14 +682,15 @@
         h('input', { type: 'radio', name: 'when-' + option.id, checked: form.when === val, onchange: () => update({ when: val }) }),
         h('span', { text }),
       ]));
+      if (val === 'range' && form.when === 'range') {
+        rows.push(range('с', input('date', 'dateFrom'), input('date', 'dateTo'), 'по'));
+        rows.push(h('p', { class: 'esh-note', text: option.current
+          ? 'Один день — одна и та же дата в обоих полях. Перенесу в эти дни, даже если они позже текущей записи.'
+          : 'Один день — одна и та же дата в обоих полях.' }));
+      }
     }
-    if (form.when === 'range') {
-      rows.push(range(input('date', 'dateFrom'), input('date', 'dateTo'), '📆', 'с', 'по'));
-      rows.push(range(input('time', 'timeFrom'), input('time', 'timeTo'), '🕘', 'с', 'до'));
-      rows.push(h('p', { class: 'esh-note', text: option.current
-        ? 'Один день — одна и та же дата в обоих полях. Время можно не указывать — тогда в любое время. Перенесу в эти дни, даже если они позже текущей записи.'
-        : 'Один день — одна и та же дата в обоих полях. Время можно не указывать — тогда в любое время.' }));
-    }
+    rows.push(range('время с', input('time', 'timeFrom'), input('time', 'timeTo'), 'до'));
+    rows.push(h('p', { class: 'esh-note', text: 'Пусто — любое время. Только вечером — с 18:00, только утром — до 9:00, до и после работы — с 18:00 до 9:00.' }));
     return h('div', {}, rows);
   }
 
@@ -734,7 +735,7 @@
     if (purpose) card.appendChild(purpose);
     card.appendChild(h('label', { class: 'esh-row' }, [
       h('input', { type: 'checkbox', checked: form.respectTravel, onchange: (e) => update({ respectTravel: e.target.checked }) }),
-      h('span', { text: '🚶 Учитывать время на дорогу между записями' }),
+      h('span', { text: 'Учитывать время на дорогу между записями' }),
     ]));
     card.appendChild(h('label', { class: 'esh-field', text: '✍️ Как записывать' }));
     card.appendChild(h('div', {}, [
@@ -770,7 +771,6 @@
     if (form.when === 'range') {
       if (!form.dateFrom && !form.dateTo) return 'укажите даты';
       if (form.dateFrom && form.dateTo && form.dateFrom > form.dateTo) return 'дата «с» позже даты «по»';
-      if (form.timeFrom && form.timeTo && form.timeFrom > form.timeTo) return 'время «с» позже времени «до»';
     }
     if (form.where === 'contains') {
       if (!form.addressContains.trim()) return 'укажите часть адреса';

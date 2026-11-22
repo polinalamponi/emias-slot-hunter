@@ -239,8 +239,15 @@
         if (t.onlyDay && day !== t.onlyDay) { reject(slot, 'другой день'); continue; }
         if (t.dateFrom && day < t.dateFrom) { reject(slot, 'раньше выбранной даты'); continue; }
         if (t.dateTo && day > t.dateTo) { reject(slot, 'позже выбранной даты'); continue; }
-        if (t.timeFrom && slotHHMM(slot.startTime) < t.timeFrom) { reject(slot, 'раньше выбранного времени'); continue; }
-        if (t.timeTo && slotHHMM(slot.startTime) > t.timeTo) { reject(slot, 'позже выбранного времени'); continue; }
+        // «С 18:00 до 09:00» (с позже до) — до и после работы: подходит время
+        // после «с» ИЛИ до «до». Иначе — обычное окно с … до ….
+        const hhmm = slotHHMM(slot.startTime);
+        if (t.timeFrom && t.timeTo && t.timeFrom > t.timeTo) {
+          if (hhmm < t.timeFrom && hhmm > t.timeTo) { reject(slot, 'не в выбранное время'); continue; }
+        } else {
+          if (t.timeFrom && hhmm < t.timeFrom) { reject(slot, 'раньше выбранного времени'); continue; }
+          if (t.timeTo && hhmm > t.timeTo) { reject(slot, 'позже выбранного времени'); continue; }
+        }
         if (cur != null && s === cur) { reject(slot, 'это и есть текущая запись'); continue; }
         if (t.near) {
           if (curDist != null && distTo(t.near, s, toMs(slot.endTime)) >= curDist) { reject(slot, 'не ближе к нужной записи'); continue; }
@@ -1837,7 +1844,10 @@
         else if (!t.current && !t.near) parts.push('в ближайшие дни');
       }
 
-      if (t.timeFrom || t.timeTo) parts.push(`время с ${t.timeFrom || '00:00'} до ${t.timeTo || '23:59'}`);
+      if (t.timeFrom && t.timeTo && t.timeFrom > t.timeTo) parts.push(`время после ${t.timeFrom} или до ${t.timeTo}`);
+      else if (t.timeFrom && t.timeTo) parts.push(`время с ${t.timeFrom} до ${t.timeTo}`);
+      else if (t.timeFrom) parts.push(`время после ${t.timeFrom}`);
+      else if (t.timeTo) parts.push(`время до ${t.timeTo}`);
       if (t.addressContains) parts.push(`адрес: ${t.addressContains}`);
       if (t.prefer) {
         let preferText = `сначала предпочитаю до ${dayHuman(t.prefer.until)}`;
@@ -1912,15 +1922,15 @@
     // только после выбора своего пункта («в выбранные даты», «только в
     // определённое время»); скрытые поля не должны молча фильтровать слоты,
     // даже если человек успел их заполнить и передумал.
-    // «В выбранные даты» с одной и той же датой в «с» и «по» — это один день
-    // (в любое время этого дня). Даты и время задаются только вместе с этим
-    // пунктом; время не указано — значит, в любое время.
+    // Даты применяются только с пунктом «в выбранные даты» (одна и та же дата
+    // в «с» и «по» — один день). Время — отдельно, для любого варианта;
+    // пустое время — любое.
     function normalizeForm(form) {
       const f = { ...(form || {}) };
       if (f.when === 'range') {
         if (f.dateFrom && f.dateFrom === f.dateTo) { f.when = 'onlyDay'; f.day = f.dateFrom; f.dateFrom = ''; f.dateTo = ''; }
       } else {
-        f.dateFrom = ''; f.dateTo = ''; f.timeFrom = ''; f.timeTo = '';
+        f.dateFrom = ''; f.dateTo = '';
       }
       return f;
     }
@@ -2609,12 +2619,12 @@
       ['range', 'в выбранные даты'],
     ];
     // Даты и время раньше прятались в свёрнутый блок «Дополнительно» внизу —
-    // их не замечали. Теперь они под пунктом «в выбранные даты», как поле
-    // адреса под «адрес содержит»: один день — одна дата в обоих полях,
-    // время не указано — любое время (см. ui.normalizeForm).
+    // их не замечали. Даты — под пунктом «в выбранные даты» (как поле адреса
+    // под «адрес содержит»), время — отдельной строкой для любого варианта:
+    // «в любой день, но после 18:00» — частый случай (см. ui.normalizeForm).
     const input = (type, key) => h('input', { type, value: form[key], onchange: (e) => quiet({ [key]: e.target.value }) });
-    const range = (from, to, label, fromWord, toWord) => h('div', { class: 'esh-range' }, [
-      h('span', { text: label }), h('span', { text: fromWord }), from, h('span', { text: toWord }), to,
+    const range = (label, from, to, toWord) => h('div', { class: 'esh-range' }, [
+      h('span', { text: label }), from, h('span', { text: toWord }), to,
     ]);
     const rows = [];
     for (const [val, text] of opts) {
@@ -2622,14 +2632,15 @@
         h('input', { type: 'radio', name: 'when-' + option.id, checked: form.when === val, onchange: () => update({ when: val }) }),
         h('span', { text }),
       ]));
+      if (val === 'range' && form.when === 'range') {
+        rows.push(range('с', input('date', 'dateFrom'), input('date', 'dateTo'), 'по'));
+        rows.push(h('p', { class: 'esh-note', text: option.current
+          ? 'Один день — одна и та же дата в обоих полях. Перенесу в эти дни, даже если они позже текущей записи.'
+          : 'Один день — одна и та же дата в обоих полях.' }));
+      }
     }
-    if (form.when === 'range') {
-      rows.push(range(input('date', 'dateFrom'), input('date', 'dateTo'), '📆', 'с', 'по'));
-      rows.push(range(input('time', 'timeFrom'), input('time', 'timeTo'), '🕘', 'с', 'до'));
-      rows.push(h('p', { class: 'esh-note', text: option.current
-        ? 'Один день — одна и та же дата в обоих полях. Время можно не указывать — тогда в любое время. Перенесу в эти дни, даже если они позже текущей записи.'
-        : 'Один день — одна и та же дата в обоих полях. Время можно не указывать — тогда в любое время.' }));
-    }
+    rows.push(range('время с', input('time', 'timeFrom'), input('time', 'timeTo'), 'до'));
+    rows.push(h('p', { class: 'esh-note', text: 'Пусто — любое время. Только вечером — с 18:00, только утром — до 9:00, до и после работы — с 18:00 до 9:00.' }));
     return h('div', {}, rows);
   }
 
@@ -2674,7 +2685,7 @@
     if (purpose) card.appendChild(purpose);
     card.appendChild(h('label', { class: 'esh-row' }, [
       h('input', { type: 'checkbox', checked: form.respectTravel, onchange: (e) => update({ respectTravel: e.target.checked }) }),
-      h('span', { text: '🚶 Учитывать время на дорогу между записями' }),
+      h('span', { text: 'Учитывать время на дорогу между записями' }),
     ]));
     card.appendChild(h('label', { class: 'esh-field', text: '✍️ Как записывать' }));
     card.appendChild(h('div', {}, [
@@ -2710,7 +2721,6 @@
     if (form.when === 'range') {
       if (!form.dateFrom && !form.dateTo) return 'укажите даты';
       if (form.dateFrom && form.dateTo && form.dateFrom > form.dateTo) return 'дата «с» позже даты «по»';
-      if (form.timeFrom && form.timeTo && form.timeFrom > form.timeTo) return 'время «с» позже времени «до»';
     }
     if (form.where === 'contains') {
       if (!form.addressContains.trim()) return 'укажите часть адреса';

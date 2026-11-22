@@ -48,6 +48,16 @@ test('уважает dateFrom, dateTo, окно времени и onlyDay', () =
   assert.deepEqual(pick(slots, t2).ok.map((s) => s.startTime), ['2026-09-26T09:00:00+03:00']);
 });
 
+test('время «с 18:00 до 09:00» — до или после работы', () => {
+  const slots = [slot('2026-09-25T08:30:00+03:00'), slot('2026-09-25T12:00:00+03:00'), slot('2026-09-25T18:30:00+03:00')];
+  const t = { ...base, timeFrom: '18:00', timeTo: '09:00' };
+  assert.deepEqual(pick(slots, t).ok.map((s) => s.startTime).sort(), ['2026-09-25T08:30:00+03:00', '2026-09-25T18:30:00+03:00']);
+  const evening = { ...base, timeFrom: '18:00' };
+  assert.deepEqual(pick(slots, evening).ok.map((s) => s.startTime), ['2026-09-25T18:30:00+03:00']);
+  const morning = { ...base, timeTo: '09:00' };
+  assert.deepEqual(pick(slots, morning).ok.map((s) => s.startTime), ['2026-09-25T08:30:00+03:00']);
+});
+
 test('prefer поднимает подходящие слоты наверх, остальные по возрастанию времени', () => {
   const slots = [slot('2026-09-24T15:00:00+03:00'), slot('2026-09-26T09:00:00+03:00'), slot('2026-09-25T10:30:00+03:00')];
   const t = { ...base, prefer: { until: '2026-09-25', timeTo: '11:00' } };

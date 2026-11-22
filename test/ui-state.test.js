@@ -217,10 +217,13 @@ test('buildTarget: у «выбранного дня» диапазон дат н
   assert.equal(t.timeTo, '10:00');
 });
 
-test('normalizeForm: у «как можно раньше» даты и время не применяются', () => {
-  const filled = { when: 'earlier', dateFrom: '2026-10-10', dateTo: '2026-10-20', timeFrom: '08:00', timeTo: '10:00' };
+test('normalizeForm: у «как можно раньше» даты не применяются, а время — применяется', () => {
+  const filled = { when: 'earlier', dateFrom: '2026-10-10', dateTo: '2026-10-20', timeFrom: '18:00', timeTo: '' };
   const f = ui.normalizeForm(filled);
-  assert.deepEqual([f.dateFrom, f.dateTo, f.timeFrom, f.timeTo], ['', '', '', '']);
+  assert.deepEqual([f.dateFrom, f.dateTo, f.timeFrom], ['', '', '18:00']);
+  const t = ui.buildTarget({ ...option, current: null }, { ...f, where: 'any', mode: 'auto' });
+  assert.equal(t.timeFrom, '18:00');
+  assert.match(ui.describeTarget(t), /время после 18:00/);
   assert.equal(filled.dateFrom, '2026-10-10', 'сама форма не меняется — вернувшись к пункту, человек увидит свои даты');
 });
 
@@ -247,4 +250,9 @@ test('перенос «в выбранные даты»: в эти дни, да�
   assert.equal(t.anyTime, true);
   assert.equal(t.onlyDay, null);
   assert.match(ui.describeTarget(t), /перенесу в выбранные даты/);
+});
+
+test('describeTarget: «с 18:00 до 09:00» — «после 18:00 или до 09:00»', () => {
+  const t = ui.buildTarget({ ...option, current: null }, { when: 'earlier', where: 'any', mode: 'auto', timeFrom: '18:00', timeTo: '09:00' });
+  assert.match(ui.describeTarget(t), /время после 18:00 или до 09:00/);
 });

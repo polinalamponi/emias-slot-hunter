@@ -133,8 +133,15 @@
         if (t.onlyDay && day !== t.onlyDay) { reject(slot, 'другой день'); continue; }
         if (t.dateFrom && day < t.dateFrom) { reject(slot, 'раньше выбранной даты'); continue; }
         if (t.dateTo && day > t.dateTo) { reject(slot, 'позже выбранной даты'); continue; }
-        if (t.timeFrom && slotHHMM(slot.startTime) < t.timeFrom) { reject(slot, 'раньше выбранного времени'); continue; }
-        if (t.timeTo && slotHHMM(slot.startTime) > t.timeTo) { reject(slot, 'позже выбранного времени'); continue; }
+        // «С 18:00 до 09:00» (с позже до) — до и после работы: подходит время
+        // после «с» ИЛИ до «до». Иначе — обычное окно с … до ….
+        const hhmm = slotHHMM(slot.startTime);
+        if (t.timeFrom && t.timeTo && t.timeFrom > t.timeTo) {
+          if (hhmm < t.timeFrom && hhmm > t.timeTo) { reject(slot, 'не в выбранное время'); continue; }
+        } else {
+          if (t.timeFrom && hhmm < t.timeFrom) { reject(slot, 'раньше выбранного времени'); continue; }
+          if (t.timeTo && hhmm > t.timeTo) { reject(slot, 'позже выбранного времени'); continue; }
+        }
         if (cur != null && s === cur) { reject(slot, 'это и есть текущая запись'); continue; }
         if (t.near) {
           if (curDist != null && distTo(t.near, s, toMs(slot.endTime)) >= curDist) { reject(slot, 'не ближе к нужной записи'); continue; }

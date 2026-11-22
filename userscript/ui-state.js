@@ -109,7 +109,10 @@
         else if (!t.current && !t.near) parts.push('в ближайшие дни');
       }
 
-      if (t.timeFrom || t.timeTo) parts.push(`время с ${t.timeFrom || '00:00'} до ${t.timeTo || '23:59'}`);
+      if (t.timeFrom && t.timeTo && t.timeFrom > t.timeTo) parts.push(`время после ${t.timeFrom} или до ${t.timeTo}`);
+      else if (t.timeFrom && t.timeTo) parts.push(`время с ${t.timeFrom} до ${t.timeTo}`);
+      else if (t.timeFrom) parts.push(`время после ${t.timeFrom}`);
+      else if (t.timeTo) parts.push(`время до ${t.timeTo}`);
       if (t.addressContains) parts.push(`адрес: ${t.addressContains}`);
       if (t.prefer) {
         let preferText = `сначала предпочитаю до ${dayHuman(t.prefer.until)}`;
@@ -184,15 +187,15 @@
     // только после выбора своего пункта («в выбранные даты», «только в
     // определённое время»); скрытые поля не должны молча фильтровать слоты,
     // даже если человек успел их заполнить и передумал.
-    // «В выбранные даты» с одной и той же датой в «с» и «по» — это один день
-    // (в любое время этого дня). Даты и время задаются только вместе с этим
-    // пунктом; время не указано — значит, в любое время.
+    // Даты применяются только с пунктом «в выбранные даты» (одна и та же дата
+    // в «с» и «по» — один день). Время — отдельно, для любого варианта;
+    // пустое время — любое.
     function normalizeForm(form) {
       const f = { ...(form || {}) };
       if (f.when === 'range') {
         if (f.dateFrom && f.dateFrom === f.dateTo) { f.when = 'onlyDay'; f.day = f.dateFrom; f.dateFrom = ''; f.dateTo = ''; }
       } else {
-        f.dateFrom = ''; f.dateTo = ''; f.timeFrom = ''; f.timeTo = '';
+        f.dateFrom = ''; f.dateTo = '';
       }
       return f;
     }
