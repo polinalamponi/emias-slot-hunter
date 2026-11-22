@@ -188,7 +188,7 @@ class Element {
   querySelector(selector) { return this.querySelectorAll(selector)[0] || null; }
 }
 
-async function mountUi(env) {
+async function mountUi(env, extra = {}) {
   const body = new Element('body');
   const timers = new Map();
   let nextTimer = 0;
@@ -202,7 +202,8 @@ async function mountUi(env) {
     window: { localStorage: env.storage, fetch: env.fetch },
     document: { body, createElement: (tag) => new Element(tag), createTextNode: (text) => {
       const node = new Element('#text'); node.textContent = text; return node;
-    } },
+    }, ...(extra.document || {}) },
+    ...(extra.navigator ? { navigator: extra.navigator } : {}),
     EmiasCore: { create: () => { core = env.createCore(); return core; }, createUiState },
     Date: FixedDate, console,
     setTimeout: setTimer, setInterval: setTimer, clearTimeout: (id) => timers.delete(id), clearInterval: (id) => timers.delete(id),
@@ -269,3 +270,53 @@ for (const outcome of ['cancelled', 'refused', 'booked', 'restarted']) {
     }
   });
 }
+
+// Экран не гаснет, пока идёт поиск: блокировка берётся при запуске, снимается
+// по «Остановить поиск» и по выключателю, возвращается при возврате на вкладку.
+test('интерфейс: экран не гаснет, пока идёт поиск', async () => {
+  const locks = [];
+  const navigator = { wakeLock: { request: async (type) => {
+    assert.equal(type, 'screen');
+    const lock = { released: false, listeners: {},
+      addEventListener(name, fn) { this.listeners[name] = fn; },
+      async release() { this.released = true; if (this.listeners.release) this.listeners.release(); } };
+    locks.push(lock);
+    return lock;
+  } } };
+  const visibility = { state: 'visible', handler: null };
+  const document = {
+    get visibilityState() { return visibility.state; },
+    addEventListener: (type, fn) => { if (type === 'visibilitychange') visibility.handler = fn; },
+  };
+  const env = await environment({ mode: 'auto', scenario: 'bookLab' });
+  const ui = await mountUi(env, { navigator, document });
+  await new Promise(setImmediate);
+  assert.equal(locks.length, 1, 'при запуске поиска экран блокируется');
+  assert.equal(locks[0].released, false);
+
+  // Браузер сам снимает блокировку, когда вкладку скрыли; при возврате берём заново.
+  visibility.state = 'hidden';
+  await locks[0].release();
+  visibility.state = 'visible';
+  visibility.handler();
+  await new Promise(setImmediate);
+  assert.equal(locks.length, 2, 'после возврата на вкладку блокировка снова взята');
+
+  // Выключатель в панели статуса снимает блокировку и запоминается.
+  ui.root.querySelector('.esh-badge').click();
+  const toggle = ui.root.querySelectorAll('input').find((node) => node.type === 'checkbox');
+  assert.ok(toggle, 'в панели есть выключатель «Не гасить экран»');
+  toggle.listeners.change({ target: { checked: false } });
+  await new Promise(setImmediate);
+  assert.equal(locks[1].released, true, 'выключатель снимает блокировку');
+  assert.equal(env.storage.getItem('emiasSlotHunter:keepScreenOn'), '0');
+  toggle.listeners.change({ target: { checked: true } });
+  await new Promise(setImmediate);
+  assert.equal(locks.length, 3);
+
+  ui.button('Остановить поиск').click();
+  await new Promise(setImmediate);
+  assert.equal(ui.core.status().running, false);
+  assert.equal(locks[2].released, true, 'после остановки поиска экран снова может гаснуть');
+  assert.equal(locks.length, 3, 'после остановки новую блокировку не берём');
+});

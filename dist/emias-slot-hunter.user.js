@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         ЕМИАС: охотник за слотами
 // @namespace    https://github.com/polinalamponi/emias-slot-hunter
-// @version      0.1.6
+// @version      0.1.7
 // @description  Следит за расписанием ЕМИАС и ловит освободившиеся слоты: записывает по направлению и переносит записи на более раннее время
 // @author       polinalamponi
 // @homepageURL  https://github.com/polinalamponi/emias-slot-hunter
@@ -11,6 +11,7 @@
 // @match        https://emias.info/*
 // @run-at       document-idle
 // @grant        none
+// @inject-into  page
 // @noframes
 // ==/UserScript==
 
@@ -2008,6 +2009,71 @@
     } catch (e) { /* уведомление необязательно */ }
   }
 
+  /* ==================== экран не гаснет, пока идёт поиск ==================== */
+  // На телефоне вкладка засыпает вместе с экраном, на ноутбуке вслед за
+  // экраном засыпает и сам компьютер — и поиск встаёт. Screen Wake Lock —
+  // стандартная функция браузера: страница просит не гасить экран, пока она
+  // видна. Ничего никуда не отправляет. Браузер сам снимает блокировку, когда
+  // вкладку скрыли, поэтому при возвращении на вкладку берём её заново.
+  // Держим блокировку только пока поиск идёт именно в этой вкладке; человек
+  // может выключить это в панели «Что сейчас происходит».
+  const KEEP_SCREEN_KEY = 'emiasSlotHunter:keepScreenOn';
+  const wake = { lock: null, wanted: false, pending: false, warned: false };
+
+  function keepScreenOnEnabled() {
+    try { return storage.getItem(KEEP_SCREEN_KEY) !== '0'; } catch (e) { return true; }
+  }
+
+  function wakeLockSupported() {
+    return typeof navigator !== 'undefined' && !!navigator.wakeLock && typeof navigator.wakeLock.request === 'function';
+  }
+
+  async function acquireWakeLock() {
+    if (!wake.wanted || wake.lock || wake.pending || !wakeLockSupported()) return;
+    if (document.visibilityState !== 'visible') return;
+    wake.pending = true;
+    try {
+      const lock = await navigator.wakeLock.request('screen');
+      if (!wake.wanted) { lock.release().catch(() => {}); return; }
+      wake.lock = lock;
+      lock.addEventListener('release', () => { if (wake.lock === lock) wake.lock = null; });
+    } catch (e) {
+      if (!wake.warned) {
+        wake.warned = true;
+        pushLog({ at: Date.now(), msg: 'Браузер не дал запретить экрану гаснуть — следите, чтобы устройство не уснуло' });
+      }
+    } finally {
+      wake.pending = false;
+    }
+  }
+
+  function releaseWakeLock() {
+    const lock = wake.lock;
+    wake.lock = null;
+    if (lock) lock.release().catch(() => {});
+  }
+
+  // Зовём на каждое изменение значка: он меняется при любом запуске,
+  // остановке, standby и т.п., так что отдельные хуки в каждом месте не нужны.
+  function syncWakeLock() {
+    let running = false;
+    try { running = !!(core && core.status().running); } catch (e) { running = false; }
+    wake.wanted = running && keepScreenOnEnabled();
+    if (wake.wanted) acquireWakeLock(); else releaseWakeLock();
+  }
+
+  function setKeepScreenOn(on) {
+    try { storage.setItem(KEEP_SCREEN_KEY, on ? '1' : '0'); } catch (e) { /* настройка необязательна */ }
+    syncWakeLock();
+  }
+
+  function watchVisibilityForWakeLock() {
+    if (typeof document.addEventListener !== 'function') return;
+    document.addEventListener('visibilitychange', () => {
+      if (document.visibilityState === 'visible') syncWakeLock();
+    });
+  }
+
   /* ==================== стили значка и мастера (только внутри shadowRoot) ==================== */
   function styles() {
     return `
@@ -2082,6 +2148,7 @@
   function setBadge(next) {
     badgeState = { ...badgeState, ...next };
     renderBadge(badgeState);
+    syncWakeLock();
   }
 
   function renderBadge(status) {
@@ -2255,6 +2322,12 @@
     const logBox = renderLog(logEvents);
     dom.panel.appendChild(logBox);
     logBox.scrollTop = logScrollTop;
+    if (wakeLockSupported()) {
+      dom.panel.appendChild(h('label', { class: 'esh-row' }, [
+        h('input', { type: 'checkbox', checked: keepScreenOnEnabled(), onchange: (e) => setKeepScreenOn(e.target.checked) }),
+        h('span', { text: 'Не гасить экран, пока идёт поиск' }),
+      ]));
+    }
     const stopBtn = h('button', { class: 'esh-btn danger', text: 'Остановить поиск', onclick: onStop });
     dom.panel.appendChild(h('div', { class: 'esh-btns' }, [stopBtn]));
   }
@@ -2474,6 +2547,7 @@
         h('input', { type: 'radio', name: 'mode-' + option.id, checked: form.mode === 'confirm', onchange: () => update({ mode: 'confirm' }) }),
         h('span', { text: 'сначала спрашивать' }),
       ]),
+      h('p', { class: 'esh-note', text: 'О записи сообщит сам ЕМИАС — push в приложении ЕМИАС на телефоне и письмо на почту, как при обычной записи. Сидеть у компьютера не нужно. В режиме «сначала спрашивать» на ответ 60 секунд, и спросить скрипт может только в этой вкладке.' }),
     ]));
     card.appendChild(advancedFields(form, quiet));
     const error = stepTwoError(option, form);
@@ -3164,6 +3238,7 @@
     try { channel = new BroadcastChannel('emias-slot-hunter'); } catch (e) { channel = null; }
     core = create({ storage, fetch: window.fetch.bind(window), now: () => Date.now(), timer, channel });
     subscribeCore();
+    watchVisibilityForWakeLock();
     await resumeIfEnabled();
   }
 

@@ -13,8 +13,14 @@ const ORDER = [
 // / // ==/UserScript==) — первая строка файла - служебный комментарий про
 // сам header.js, а не часть метаданных, и раньше он же попадал в dist
 // ПЕРЕД // ==UserScript==, из-за чего Tampermonkey мог не опознать шапку.
-const header = fs.readFileSync(path.join(ROOT, 'userscript/header.js'), 'utf8')
-  .split('\n').filter((l) => l.startsWith('// ==') || l.startsWith('// @')).join('\n');
+// Берём строго блок от // ==UserScript== до // ==/UserScript==: комментарии
+// вокруг него (даже начинающиеся с «// @») в шапку не попадут.
+const headerLines = fs.readFileSync(path.join(ROOT, 'userscript/header.js'), 'utf8').split('\n');
+const metaStart = headerLines.findIndex((l) => l.trim() === '// ==UserScript==');
+const metaEnd = headerLines.findIndex((l) => l.trim() === '// ==/UserScript==');
+if (metaStart < 0 || metaEnd < metaStart) throw new Error('userscript/header.js: не найден блок ==UserScript==');
+const header = headerLines.slice(metaStart, metaEnd + 1)
+  .filter((l) => l.startsWith('// ==') || l.startsWith('// @')).join('\n');
 
 const parts = ORDER
   .filter((f) => fs.existsSync(path.join(ROOT, f)))
