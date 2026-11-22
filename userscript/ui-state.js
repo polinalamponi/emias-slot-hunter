@@ -174,7 +174,20 @@
       return true;
     }
 
+    // Форма мастера → то, что реально применяется. Поля дат и времени видны
+    // только после выбора своего пункта («в выбранные даты», «только в
+    // определённое время»); скрытые поля не должны молча фильтровать слоты,
+    // даже если человек успел их заполнить и передумал.
+    function normalizeForm(form) {
+      const f = { ...(form || {}) };
+      if (f.when === 'range') f.when = 'earlier';
+      else { f.dateFrom = ''; f.dateTo = ''; }
+      if (!f.timeOn) { f.timeFrom = ''; f.timeTo = ''; }
+      return f;
+    }
+
     return {
+      normalizeForm,
       buildTarget, describeTarget, describeDryRunItem, saveConfig, loadConfig, applyBookedUpdate, human, stripCampus, KEY,
       INQUIRY_PURPOSES, shouldShowThanks,
     };

@@ -280,7 +280,7 @@
       .esh-opt .title { font-weight: 600; font-size: 13px; }
       .esh-opt .meta { font-size: 12px; color: #666; }
       .esh-opt .reason { font-size: 12px; color: #a33; }
-      .esh-field { display: block; font-size: 12px; margin: 6px 0 2px; color: #444; }
+      .esh-field { display: block; font-size: 13px; font-weight: 600; margin: 12px 0 2px; color: #333; }
       .esh-card input[type=text], .esh-card input[type=date], .esh-card input[type=time] { width: 100%; padding: 4px 6px; margin-top: 4px; font-size: 13px; border: 1px solid #ccc; border-radius: 6px; }
       .esh-btns { display: flex; gap: 8px; margin-top: 12px; }
       .esh-btn { flex: 1; padding: 8px 10px; border-radius: 8px; border: 1px solid #ccc; background: #f4f4f4; cursor: pointer; font-size: 13px; }
@@ -659,34 +659,45 @@
       h('input', { type: 'radio', name: 'purpose-' + option.id, checked: (form.purpose || 'unwell') === val, onchange: () => update({ purpose: val }) }),
       h('span', { text }),
     ])));
-    return h('div', {}, [h('label', { class: 'esh-field', text: 'Цель визита' }), group]);
+    return h('div', {}, [h('label', { class: 'esh-field', text: '💬 Цель визита' }), group]);
   }
 
   function whenField(option, form, update, quiet) {
     const opts = [
       ['earlier', option.current ? 'раньше, чем сейчас записано' : 'как можно раньше'],
       ...(option.current ? [['sameDayEarlier', 'в тот же день, но раньше']] : []),
+      ['range', option.current ? 'раньше, в выбранные даты' : 'в выбранные даты'],
       ['onlyDay', 'в выбранный день'],
     ];
-    const group = h('div', {}, opts.map(([val, text]) => h('label', { class: 'esh-row' }, [
-      h('input', { type: 'radio', name: 'when-' + option.id, checked: form.when === val, onchange: () => update({ when: val }) }),
-      h('span', { text }),
-    ])));
     // Даты и время раньше прятались в свёрнутый блок «Дополнительно» внизу —
-    // их не замечали. Теперь они прямо в «Когда»: диапазон дат — для «как
-    // можно раньше» (у «выбранного дня» и «того же дня» день уже задан),
-    // время — для любого варианта.
+    // их не замечали. Теперь они в «Когда», как фильтр адреса в «Где»: поля
+    // появляются прямо под своим пунктом, когда он выбран, и только тогда
+    // применяются (см. ui.normalizeForm).
     const input = (type, key) => h('input', { type, value: form[key], onchange: (e) => quiet({ [key]: e.target.value }) });
-    const range = (label, from, to, fromWord, toWord) => h('div', {}, [
-      h('label', { class: 'esh-field', text: label }),
-      h('div', { class: 'esh-range' }, [h('span', { text: fromWord }), from, h('span', { text: toWord }), to]),
+    const range = (from, to, fromWord, toWord) => h('div', { class: 'esh-range' }, [
+      h('span', { text: fromWord }), from, h('span', { text: toWord }), to,
     ]);
-    const dayInput = form.when === 'onlyDay' ? input('date', 'day') : null;
-    const dates = form.when === 'earlier'
-      ? range('Даты — по желанию', input('date', 'dateFrom'), input('date', 'dateTo'), 'с', 'по') : null;
-    const times = range('Время приёма — по желанию, например только утром: до 10:00',
-      input('time', 'timeFrom'), input('time', 'timeTo'), 'с', 'до');
-    return h('div', {}, [group, dayInput, dates, times]);
+    const reveal = {
+      range: () => range(input('date', 'dateFrom'), input('date', 'dateTo'), 'с', 'по'),
+      onlyDay: () => input('date', 'day'),
+    };
+    const rows = [];
+    for (const [val, text] of opts) {
+      rows.push(h('label', { class: 'esh-row' }, [
+        h('input', { type: 'radio', name: 'when-' + option.id, checked: form.when === val, onchange: () => update({ when: val }) }),
+        h('span', { text }),
+      ]));
+      if (form.when === val && reveal[val]) rows.push(reveal[val]());
+    }
+    rows.push(h('label', { class: 'esh-row' }, [
+      h('input', { type: 'checkbox', checked: !!form.timeOn, onchange: (e) => update({ timeOn: e.target.checked }) }),
+      h('span', { text: '🕘 выбрать время приёма' }),
+    ]));
+    if (form.timeOn) {
+      rows.push(range(input('time', 'timeFrom'), input('time', 'timeTo'), 'с', 'до'));
+      rows.push(h('p', { class: 'esh-note', text: 'Например, только утром: до 10:00.' }));
+    }
+    return h('div', {}, rows);
   }
 
   function whereField(option, form, update, quiet) {
@@ -722,17 +733,17 @@
     const quiet = (patch) => { Object.assign(form, patch); refreshStepTwoState(); };
     const card = h('div', { class: 'esh-opt' });
     card.appendChild(h('div', { class: 'title', text: option.title }));
-    card.appendChild(h('label', { class: 'esh-field', text: 'Когда' }));
+    card.appendChild(h('label', { class: 'esh-field', text: '📅 Когда' }));
     card.appendChild(whenField(option, form, update, quiet));
-    card.appendChild(h('label', { class: 'esh-field', text: 'Где' }));
+    card.appendChild(h('label', { class: 'esh-field', text: '📍 Где' }));
     card.appendChild(whereField(option, form, update, quiet));
     const purpose = purposeField(option, form, update);
     if (purpose) card.appendChild(purpose);
     card.appendChild(h('label', { class: 'esh-row' }, [
       h('input', { type: 'checkbox', checked: form.respectTravel, onchange: (e) => update({ respectTravel: e.target.checked }) }),
-      h('span', { text: 'Учитывать время на дорогу между записями' }),
+      h('span', { text: '🚶 Учитывать время на дорогу между записями' }),
     ]));
-    card.appendChild(h('label', { class: 'esh-field', text: 'Как записывать' }));
+    card.appendChild(h('label', { class: 'esh-field', text: '✍️ Как записывать' }));
     card.appendChild(h('div', {}, [
       h('label', { class: 'esh-row' }, [
         h('input', { type: 'radio', name: 'mode-' + option.id, checked: form.mode === 'auto', onchange: () => update({ mode: 'auto' }) }),
@@ -744,7 +755,7 @@
       ]),
       h('p', { class: 'esh-note', text: 'О записи сообщит сам ЕМИАС — push в приложении ЕМИАС на телефоне и письмо на почту, как при обычной записи. Сидеть у компьютера не нужно. В режиме «сначала спрашивать» на ответ 60 секунд, и спросить скрипт может только в этой вкладке.' }),
     ]));
-    card.appendChild(h('label', { class: 'esh-field', text: 'После записи' }));
+    card.appendChild(h('label', { class: 'esh-field', text: '🏁 После записи' }));
     card.appendChild(h('div', {}, [
       h('label', { class: 'esh-row' }, [
         h('input', { type: 'radio', name: 'after-' + option.id, checked: form.afterBooking !== 'improve', onchange: () => update({ afterBooking: 'stop' }) }),
@@ -764,8 +775,14 @@
 
   function stepTwoError(option, form) {
     if (form.when === 'onlyDay' && !form.day) return 'выберите день';
-    if (form.when === 'earlier' && form.dateFrom && form.dateTo && form.dateFrom > form.dateTo) return 'дата «с» позже даты «по»';
-    if (form.timeFrom && form.timeTo && form.timeFrom > form.timeTo) return 'время «с» позже времени «до»';
+    if (form.when === 'range') {
+      if (!form.dateFrom && !form.dateTo) return 'укажите даты';
+      if (form.dateFrom && form.dateTo && form.dateFrom > form.dateTo) return 'дата «с» позже даты «по»';
+    }
+    if (form.timeOn) {
+      if (!form.timeFrom && !form.timeTo) return 'укажите время';
+      if (form.timeFrom && form.timeTo && form.timeFrom > form.timeTo) return 'время «с» позже времени «до»';
+    }
     if (form.where === 'contains') {
       if (!form.addressContains.trim()) return 'укажите часть адреса';
       // Строка непустая, но осмысленных ключей в ней нет (например, «---» или
@@ -817,7 +834,7 @@
   /* ==================== шаг 3: холостой прогон и запуск ==================== */
   async function loadStep3() {
     renderLoading('Шаг 3 из 3. Проверка перед запуском');
-    wizard.builtTargets = wizard.selected.map((o) => ui.buildTarget(o, ensureForm(o)));
+    wizard.builtTargets = wizard.selected.map((o) => ui.buildTarget(o, ui.normalizeForm(ensureForm(o))));
     core.setTargets(wizard.builtTargets);
     try {
       wizard.report = await core.dryRun();

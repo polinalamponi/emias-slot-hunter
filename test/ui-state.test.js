@@ -216,3 +216,24 @@ test('buildTarget: у «выбранного дня» диапазон дат н
   assert.equal(t.timeFrom, '08:00');
   assert.equal(t.timeTo, '10:00');
 });
+
+test('normalizeForm: скрытые поля дат и времени не применяются', () => {
+  const filled = { when: 'earlier', dateFrom: '2026-10-10', dateTo: '2026-10-20', timeOn: false, timeFrom: '08:00', timeTo: '10:00' };
+  const f = ui.normalizeForm(filled);
+  assert.equal(f.dateFrom, '', 'даты скрыты (не выбран пункт «в выбранные даты») — не применяются');
+  assert.equal(f.dateTo, '');
+  assert.equal(f.timeFrom, '', 'время скрыто (галочка снята) — не применяется');
+  assert.equal(f.timeTo, '');
+  assert.equal(filled.dateFrom, '2026-10-10', 'сама форма не меняется — вернувшись к пункту, человек увидит свои даты');
+});
+
+test('normalizeForm: «в выбранные даты» — это «как можно раньше» в пределах дат', () => {
+  const f = ui.normalizeForm({ when: 'range', dateFrom: '2026-10-10', dateTo: '2026-10-20', timeOn: true, timeFrom: '08:00', timeTo: '10:00' });
+  assert.equal(f.when, 'earlier');
+  const t = ui.buildTarget(option, { ...f, where: 'any', mode: 'auto' });
+  assert.equal(t.dateFrom, '2026-10-10');
+  assert.equal(t.dateTo, '2026-10-20');
+  assert.equal(t.timeFrom, '08:00');
+  assert.equal(t.timeTo, '10:00');
+  assert.equal(t.onlyDay, null);
+});
