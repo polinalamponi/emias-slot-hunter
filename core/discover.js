@@ -52,6 +52,11 @@
       // Если есть свободные направления на кровь, предлагаем их как цели записи
       // CRITICAL 1: дедупликация теперь по паре (moId + samplingTypeId), не по названию
       const bookedLab = new Set(out.filter((o) => o.scenario === 'shiftLab').map((o) => `${o.source.moId}:${o.source.samplingTypeId}`));
+      // У новых записей (направления и назначения без записи) здания ещё нет:
+      // есть только название медорганизации. Кладём его в place, а не в
+      // address — иначе «в этом же здании» превращалось в фильтр «адрес
+      // содержит „ГП № …“», под который не подходит ни один адрес, и охотник
+      // ждал вечно. address — только настоящий адрес здания (у записей).
       // Живой ЕМИАС отдаёт { items, count }, старые фикстуры — массив.
       const assignments = Array.isArray(ar.assignments) ? ar.assignments : (ar.assignments && ar.assignments.items) || [];
       for (const as of assignments) {
@@ -61,7 +66,7 @@
         const labKey = `${as.moId}:${as.toBM && as.toBM.id}`;
         if (bookedLab.has(labKey)) continue;
         out.push({ id: `lab:${as.moId}:${as.toBM && as.toBM.id}`, scenario: 'bookLab', title,
-          current: null, address: as.moName || null, deadline: as.period && as.period.dateTo,
+          current: null, address: null, place: as.moName || null, deadline: as.period && as.period.dateTo,
           supported: true, unsupportedReason: null,
           source: { moId: as.moId, samplingTypeId: as.toBM && as.toBM.id } });
       }
@@ -75,7 +80,7 @@
         if (ref.toDoctor) {
           const title = ref.toDoctor.specialityName + (ref.toDoctor.doctorFio ? ' — ' + ref.toDoctor.doctorFio : '');
           out.push({ id: 'ref:' + ref.id, scenario: 'bookDoctor', title, current: null,
-            address: ref.lpuName || null, deadline: ref.endTime, supported: true, unsupportedReason: null,
+            address: null, place: ref.lpuName || null, deadline: ref.endTime, supported: true, unsupportedReason: null,
             source: {
               referralId: ref.id, lpuId: ref.lpuId, specialityId: ref.toDoctor.specialityId,
               needPurpose: !!ref.needPurpose, availableResourceId: ref.availableResourceId || null,
@@ -84,13 +89,13 @@
         }
         if (ref.toLdp) {
           out.push({ id: 'ref:' + ref.id, scenario: 'bookLdp', title: ref.toLdp.ldpTypeName || 'Исследование', current: null,
-            address: ref.lpuName || null, deadline: ref.endTime, supported: true, unsupportedReason: null,
+            address: null, place: ref.lpuName || null, deadline: ref.endTime, supported: true, unsupportedReason: null,
             source: { referralId: ref.id, lpuId: ref.lpuId, ldpTypeId: Number(ref.toLdp.ldpTypeId) } });
           continue;
         }
         const title = 'Направление';
         out.push({ id: 'ref:' + ref.id, scenario: 'bookReferral', title, current: null,
-          address: ref.lpuName || null, deadline: ref.endTime, supported: false,
+          address: null, place: ref.lpuName || null, deadline: ref.endTime, supported: false,
           unsupportedReason: 'Новая запись по такому направлению появится в следующей версии',
           source: { referralId: ref.id, lpuId: ref.lpuId } });
       }

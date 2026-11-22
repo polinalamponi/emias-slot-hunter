@@ -47,7 +47,10 @@ test('направление к врачу без записи (needPurpose: tru
   assert.equal(ref.scenario, 'bookDoctor');
   assert.equal(ref.title, 'Врач-эндокринолог');
   assert.equal(ref.current, null);
-  assert.equal(ref.address, 'Тестовая поликлиника');
+  // У новой записи здания ещё нет: название медорганизации — в place, не в address,
+  // иначе «в этом же здании» фильтровало бы адреса по названию и не находило ничего.
+  assert.equal(ref.address, null);
+  assert.equal(ref.place, 'Тестовая поликлиника');
   assert.equal(ref.deadline, '2026-10-13');
   assert.equal(ref.supported, true);
   assert.equal(ref.unsupportedReason, null);
@@ -75,6 +78,7 @@ test('направление на кровь без записи даёт цел
   assert.equal(book.source.samplingTypeId, 1);
   assert.equal(book.deadline, '2026-10-14');
   assert.equal(book.supported, true);
+  assert.equal(book.address, null, 'у новой записи на кровь здания ещё нет — «в этом же здании» не предлагаем');
 });
 
 // Живой ЕМИАС (проверено 2026-09-24) отдаёт assignments не массивом, а

@@ -609,6 +609,7 @@
     const parts = [];
     if (option.current) parts.push('сейчас записано на ' + ui.human(option.current));
     if (option.address) parts.push(ui.stripCampus(option.address));
+    else if (option.place) parts.push(option.place);
     if (option.deadline) parts.push('направление действует по ' + option.deadline.slice(8, 10) + '.' + option.deadline.slice(5, 7));
     return parts.join(' · ') || 'запись по направлению';
   }
