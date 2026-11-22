@@ -666,36 +666,29 @@
     const opts = [
       ['earlier', option.current ? 'раньше, чем сейчас записано' : 'как можно раньше'],
       ...(option.current ? [['sameDayEarlier', 'в тот же день, но раньше']] : []),
-      ['range', option.current ? 'раньше, в выбранные даты' : 'в выбранные даты'],
-      ['onlyDay', 'в выбранный день'],
+      ['range', 'в выбранные даты'],
     ];
     // Даты и время раньше прятались в свёрнутый блок «Дополнительно» внизу —
-    // их не замечали. Теперь они в «Когда», как фильтр адреса в «Где»: поля
-    // появляются прямо под своим пунктом, когда он выбран, и только тогда
-    // применяются (см. ui.normalizeForm).
+    // их не замечали. Теперь они под пунктом «в выбранные даты», как поле
+    // адреса под «адрес содержит»: один день — одна дата в обоих полях,
+    // время не указано — любое время (см. ui.normalizeForm).
     const input = (type, key) => h('input', { type, value: form[key], onchange: (e) => quiet({ [key]: e.target.value }) });
-    const range = (from, to, fromWord, toWord) => h('div', { class: 'esh-range' }, [
-      h('span', { text: fromWord }), from, h('span', { text: toWord }), to,
+    const range = (from, to, label, fromWord, toWord) => h('div', { class: 'esh-range' }, [
+      h('span', { text: label }), h('span', { text: fromWord }), from, h('span', { text: toWord }), to,
     ]);
-    const reveal = {
-      range: () => range(input('date', 'dateFrom'), input('date', 'dateTo'), 'с', 'по'),
-      onlyDay: () => input('date', 'day'),
-    };
     const rows = [];
     for (const [val, text] of opts) {
       rows.push(h('label', { class: 'esh-row' }, [
         h('input', { type: 'radio', name: 'when-' + option.id, checked: form.when === val, onchange: () => update({ when: val }) }),
         h('span', { text }),
       ]));
-      if (form.when === val && reveal[val]) rows.push(reveal[val]());
     }
-    rows.push(h('label', { class: 'esh-row' }, [
-      h('input', { type: 'checkbox', checked: !!form.timeOn, onchange: (e) => update({ timeOn: e.target.checked }) }),
-      h('span', { text: '🕘 выбрать время приёма' }),
-    ]));
-    if (form.timeOn) {
-      rows.push(range(input('time', 'timeFrom'), input('time', 'timeTo'), 'с', 'до'));
-      rows.push(h('p', { class: 'esh-note', text: 'Например, только утром: до 10:00.' }));
+    if (form.when === 'range') {
+      rows.push(range(input('date', 'dateFrom'), input('date', 'dateTo'), '📆', 'с', 'по'));
+      rows.push(range(input('time', 'timeFrom'), input('time', 'timeTo'), '🕘', 'с', 'до'));
+      rows.push(h('p', { class: 'esh-note', text: option.current
+        ? 'Один день — одна и та же дата в обоих полях. Время можно не указывать — тогда в любое время. Перенесу в эти дни, даже если они позже текущей записи.'
+        : 'Один день — одна и та же дата в обоих полях. Время можно не указывать — тогда в любое время.' }));
     }
     return h('div', {}, rows);
   }
@@ -774,13 +767,9 @@
   }
 
   function stepTwoError(option, form) {
-    if (form.when === 'onlyDay' && !form.day) return 'выберите день';
     if (form.when === 'range') {
       if (!form.dateFrom && !form.dateTo) return 'укажите даты';
       if (form.dateFrom && form.dateTo && form.dateFrom > form.dateTo) return 'дата «с» позже даты «по»';
-    }
-    if (form.timeOn) {
-      if (!form.timeFrom && !form.timeTo) return 'укажите время';
       if (form.timeFrom && form.timeTo && form.timeFrom > form.timeTo) return 'время «с» позже времени «до»';
     }
     if (form.where === 'contains') {

@@ -39,6 +39,11 @@
       } else if (form.when === 'onlyDay' || form.when === 'anyTimeOnDay') {
         onlyDay = form.day || null;
         anyTime = true;
+      } else if (form.when === 'range') {
+        // «В выбранные даты» для переноса — перенести в эти дни, даже если они
+        // позже текущей записи; иначе при датах после неё охотник молча не
+        // нашёл бы ничего. Для новой записи anyTime ни на что не влияет.
+        anyTime = !!option.current;
       }
 
       const deadline = option.deadline || null;
@@ -88,6 +93,7 @@
       if (t.near) parts.push(`подгоняю ближе к ${human(t.near.start)}–${String(t.near.end).slice(11, 16)}`);
       else if (t.onlyDay && t.anyTime) parts.push(`любое время ${dayHuman(t.onlyDay)}`);
       else if (t.onlyDay && t.current) parts.push(`${dayHuman(t.onlyDay)}, раньше ${human(t.current)}`);
+      else if (t.anyTime && t.current) parts.push('перенесу в выбранные даты, в любое время');
       else if (t.onlyDay) parts.push(`только ${dayHuman(t.onlyDay)}`);
       else if (t.current) parts.push(`раньше ${human(t.current)}`);
 
@@ -178,11 +184,16 @@
     // только после выбора своего пункта («в выбранные даты», «только в
     // определённое время»); скрытые поля не должны молча фильтровать слоты,
     // даже если человек успел их заполнить и передумал.
+    // «В выбранные даты» с одной и той же датой в «с» и «по» — это один день
+    // (в любое время этого дня). Даты и время задаются только вместе с этим
+    // пунктом; время не указано — значит, в любое время.
     function normalizeForm(form) {
       const f = { ...(form || {}) };
-      if (f.when === 'range') f.when = 'earlier';
-      else { f.dateFrom = ''; f.dateTo = ''; }
-      if (!f.timeOn) { f.timeFrom = ''; f.timeTo = ''; }
+      if (f.when === 'range') {
+        if (f.dateFrom && f.dateFrom === f.dateTo) { f.when = 'onlyDay'; f.day = f.dateFrom; f.dateFrom = ''; f.dateTo = ''; }
+      } else {
+        f.dateFrom = ''; f.dateTo = ''; f.timeFrom = ''; f.timeTo = '';
+      }
       return f;
     }
 
