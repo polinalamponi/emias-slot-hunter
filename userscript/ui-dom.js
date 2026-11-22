@@ -869,7 +869,7 @@
   function renderStep4() {
     clear(dom.panel);
     dom.panel.appendChild(h('h3', { text: 'Готово' }));
-    dom.panel.appendChild(h('p', {}, 'Слежу за расписанием. Пока идёт поиск, на значке 👀, а когда запишу — ✅.'));
+    dom.panel.appendChild(h('p', {}, 'Слежу за расписанием — можете заниматься своими делами. Пока идёт поиск, на значке 👀, а когда запишу — ✅ и придёт уведомление от ЕМИАС.'));
     const titles = (wizard.builtTargets || []).map((t) => t.title).join(', ');
     if (titles) dom.panel.appendChild(h('p', { class: 'esh-note', text: 'Слежу за: ' + titles }));
     dom.panel.appendChild(h('div', { class: 'esh-btns' }, [
