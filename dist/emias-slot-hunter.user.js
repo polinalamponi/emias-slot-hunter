@@ -1879,9 +1879,20 @@
       return changed ? { ...cfg, targets } : cfg;
     }
 
+    // Карточка «угостите автора кофе» после успешной записи: не чаще раза
+    // в 3 дня, а после нажатия «Угостить кофе» — 3 месяца не показываем.
+    const THANKS_PAUSE_MS = 3 * 24 * 3600000;
+    const THANKS_AFTER_DONATE_MS = 90 * 24 * 3600000;
+    function shouldShowThanks(st, now) {
+      const s = st || {};
+      if (s.donatedAt && now - s.donatedAt < THANKS_AFTER_DONATE_MS) return false;
+      if (s.shownAt && now - s.shownAt < THANKS_PAUSE_MS) return false;
+      return true;
+    }
+
     return {
       buildTarget, describeTarget, describeDryRunItem, saveConfig, loadConfig, applyBookedUpdate, human, stripCampus, KEY,
-      INQUIRY_PURPOSES,
+      INQUIRY_PURPOSES, shouldShowThanks,
     };
   }
 
@@ -2184,6 +2195,8 @@
       .esh-note { color: #666; font-size: 12px; }
       .esh-status-target { margin-bottom: 8px; }
       .esh-status-target p { margin: 2px 0; }
+      .esh-thanks { width: 300px; max-width: calc(100vw - 32px); box-sizing: border-box; background: #eef8ee; border: 1px solid #8cc58c; border-radius: 10px; padding: 10px; margin-bottom: 8px; box-shadow: 0 2px 10px rgba(0,0,0,.2); font-size: 13px; color: #222; }
+      .esh-thanks a.esh-btn { text-align: center; text-decoration: none; }
       .esh-confirm { width: 300px; max-width: calc(100vw - 32px); box-sizing: border-box; background: #fff8ea; border: 1px solid #e0b84b; border-radius: 10px; padding: 10px; margin-bottom: 8px; box-shadow: 0 2px 10px rgba(0,0,0,.2); }
       .esh-slept { width: 300px; background: #eef2ff; border: 1px solid #98a6e0; border-radius: 10px; padding: 10px; display: flex; justify-content: space-between; gap: 8px; }
       /* .esh-slept задаёт свой display: flex — этим он перебивает display:
@@ -2208,9 +2221,11 @@
     const root = h('div', { class: 'esh-root' });
     const badge = h('button', { class: 'esh-badge k-init', onclick: onBadgeClick, text: 'ЕМИАС: охотник за слотами' });
     const confirms = h('div', { class: 'esh-confirms' });
+    const thanks = h('div', { class: 'esh-thanks-box' });
     const slept = h('div', { class: 'esh-slept', hidden: true });
     const panel = h('div', { class: 'esh-card', hidden: true });
 
+    root.appendChild(thanks);
     root.appendChild(confirms);
     root.appendChild(slept);
     root.appendChild(panel);
@@ -2218,7 +2233,7 @@
     shadow.appendChild(root);
     document.body.appendChild(host);
 
-    Object.assign(dom, { shadow, root, badge, confirms, slept, panel });
+    Object.assign(dom, { shadow, root, badge, thanks, confirms, slept, panel });
   }
 
   /* ==================== значок ==================== */
@@ -2971,6 +2986,43 @@
     }).catch((e) => setBadge(initErrorBadge(e)));
   }
 
+  /* ==================== благодарность автору после успешной записи ==================== */
+  // Единственный внешний адрес в коде. Это только ссылка: открывается, когда
+  // человек сам нажмёт; скрипт по ней ничего не запрашивает и не отправляет,
+  // rel=noreferrer не даёт браузеру передать, с какой страницы перешли.
+  // test/security.test.js разрешает ровно эту строку и ровно одно её
+  // использование — как href ссылки.
+  const DONATE_URL = 'https://t.tb.ru/pm_short/6lKWxzCflJH';
+  const THANKS_KEY = 'emiasSlotHunter:thanks';
+
+  function loadThanks() {
+    try { return JSON.parse(storage.getItem(THANKS_KEY) || '{}') || {}; } catch (e) { return {}; }
+  }
+
+  function saveThanks(next) {
+    try { storage.setItem(THANKS_KEY, JSON.stringify({ ...loadThanks(), ...next })); } catch (e) { /* необязательно */ }
+  }
+
+  function hideThanks() { clear(dom.thanks); }
+
+  function maybeShowThanks() {
+    const now = Date.now();
+    if (dom.thanks.children && dom.thanks.children.length) return;
+    if (!ui.shouldShowThanks(loadThanks(), now)) return;
+    saveThanks({ shownAt: now });
+    dom.thanks.appendChild(h('div', { class: 'esh-thanks' }, [
+      h('p', { text: '🎉 Охотник поймал запись!' }),
+      h('p', { text: 'Если он вам помог, угостите автора кофе ☕ Охотник бесплатный, и для меня это знак, что его стоит развивать.' }),
+      h('div', { class: 'esh-btns' }, [
+        h('a', {
+          class: 'esh-btn primary', href: DONATE_URL, target: '_blank', rel: 'noopener noreferrer',
+          text: '☕ Угостить кофе', onclick: () => { saveThanks({ donatedAt: Date.now() }); hideThanks(); },
+        }),
+        h('button', { class: 'esh-btn', text: 'Не сейчас', onclick: hideThanks }),
+      ]),
+    ]));
+  }
+
   function onBooked(payload) {
     const where = payload.address ? ` — ${ui.stripCampus(payload.address)}` : '';
     notify('ЕМИАС: записано', `${payload.title}: ${ui.human(payload.slot.startTime)}${where}`);
@@ -2991,6 +3043,7 @@
     // только его kind), чтобы вернуть и текст тоже.
     if (badgeState.kind !== 'booked') preBookedBadge = { ...badgeState };
     if (!showBookedBadge()) setBadge({ kind: 'booked', text: '🟠 Записано: ' + payload.title, detail: '' });
+    maybeShowThanks();
   }
 
   // Раньше значок «Записано» через 8 секунд сам возвращался к «Ищу слоты», и

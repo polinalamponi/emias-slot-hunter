@@ -191,3 +191,13 @@ test('describeTarget: bookDoctor упоминает выбранную цель 
   const s = ui.describeTarget(t);
   assert.match(s, /цель визита: Оформление документов/i);
 });
+
+test('shouldShowThanks: не чаще раза в 3 дня, после «Угостить кофе» — 3 месяца тишины', () => {
+  const DAY = 24 * 3600000;
+  const now = Date.parse('2026-12-01T10:00:00Z');
+  assert.equal(ui.shouldShowThanks(null, now), true, 'ни разу не показывали — показываем');
+  assert.equal(ui.shouldShowThanks({ shownAt: now - 2 * DAY }, now), false, 'показывали 2 дня назад');
+  assert.equal(ui.shouldShowThanks({ shownAt: now - 3 * DAY - 1 }, now), true, 'прошло больше 3 дней');
+  assert.equal(ui.shouldShowThanks({ donatedAt: now - 30 * DAY, shownAt: now - 30 * DAY }, now), false, 'перевели месяц назад');
+  assert.equal(ui.shouldShowThanks({ donatedAt: now - 91 * DAY, shownAt: now - 91 * DAY }, now), true, 'прошло 3 месяца');
+});

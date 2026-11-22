@@ -156,9 +156,20 @@
       return changed ? { ...cfg, targets } : cfg;
     }
 
+    // Карточка «угостите автора кофе» после успешной записи: не чаще раза
+    // в 3 дня, а после нажатия «Угостить кофе» — 3 месяца не показываем.
+    const THANKS_PAUSE_MS = 3 * 24 * 3600000;
+    const THANKS_AFTER_DONATE_MS = 90 * 24 * 3600000;
+    function shouldShowThanks(st, now) {
+      const s = st || {};
+      if (s.donatedAt && now - s.donatedAt < THANKS_AFTER_DONATE_MS) return false;
+      if (s.shownAt && now - s.shownAt < THANKS_PAUSE_MS) return false;
+      return true;
+    }
+
     return {
       buildTarget, describeTarget, describeDryRunItem, saveConfig, loadConfig, applyBookedUpdate, human, stripCampus, KEY,
-      INQUIRY_PURPOSES,
+      INQUIRY_PURPOSES, shouldShowThanks,
     };
   }
 

@@ -320,3 +320,24 @@ test('интерфейс: экран не гаснет, пока идёт пои
   assert.equal(locks[2].released, true, 'после остановки поиска экран снова может гаснуть');
   assert.equal(locks.length, 3, 'после остановки новую блокировку не берём');
 });
+
+// После успешной записи — карточка «угостите автора кофе» со ссылкой на
+// перевод; «Не сейчас» её убирает, а время показа запоминается.
+test('интерфейс: после записи предлагает угостить автора кофе', async () => {
+  const env = await environment({ mode: 'auto', scenario: 'bookLab' });
+  const ui = await mountUi(env);
+  assert.equal(ui.root.querySelectorAll('.esh-thanks').length, 0, 'до записи карточки нет');
+  await env.timer.queue.shift()();
+  await new Promise(setImmediate);
+  assert.ok(env.calls.some((call) => call.url.includes('createAppointment')), 'охотник записал');
+  const card = ui.root.querySelector('.esh-thanks');
+  assert.ok(card, 'после записи появилась карточка благодарности');
+  const link = card.querySelectorAll('a')[0];
+  assert.equal(link.href, 'https://t.tb.ru/pm_short/6lKWxzCflJH');
+  assert.equal(link.target, '_blank');
+  assert.equal(link.rel, 'noopener noreferrer');
+  assert.ok(JSON.parse(env.storage.getItem('emiasSlotHunter:thanks')).shownAt, 'время показа запомнено');
+  const later = card.querySelectorAll('button').find((b) => b.textContent === 'Не сейчас');
+  later.click();
+  assert.equal(ui.root.querySelectorAll('.esh-thanks').length, 0, '«Не сейчас» убирает карточку');
+});

@@ -44,8 +44,22 @@ test('шапка: обновления приходят только из вет
   assert.deepEqual(values(meta, 'downloadURL'), [RELEASE_URL]);
 });
 
-test('код: в нём нет адресов, кроме emias.info', () => {
+// Единственное исключение из «только emias.info» — ссылка на перевод автору
+// в карточке благодарности после записи. Человек открывает её сам; скрипт по
+// ней ничего не запрашивает. Разрешена ровно эта строка, ровно один раз,
+// и только как href ссылки с rel="noopener noreferrer".
+const DONATE_URL = 'https://t.tb.ru/pm_short/6lKWxzCflJH';
+
+test('код: единственный внешний адрес — ссылка на перевод автору, и она только ссылка', () => {
   const { body } = split();
+  assert.equal(body.split(DONATE_URL).length - 1, 1, 'адрес перевода встречается ровно один раз');
+  assert.ok(body.includes(`const DONATE_URL = '${DONATE_URL}';`), 'адрес перевода объявлен константой DONATE_URL');
+  assert.equal(body.split('DONATE_URL').length - 1, 2, 'DONATE_URL используется ровно один раз после объявления');
+  assert.ok(body.includes("href: DONATE_URL, target: '_blank', rel: 'noopener noreferrer'"), 'DONATE_URL — только href ссылки');
+});
+
+test('код: в нём нет адресов, кроме emias.info', () => {
+  const body = split().body.replace(DONATE_URL, '');
   const hosts = new Set([...body.matchAll(/(?:https?:|wss?:)?\/\/([a-z0-9-]+(?:\.[a-z0-9-]+)+)/gi)].map((m) => m[1].toLowerCase()));
   for (const h of hosts) assert.equal(h, 'emias.info', `в коде найден посторонний адрес: ${h}`);
 });
