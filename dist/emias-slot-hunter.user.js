@@ -1775,10 +1775,12 @@
         onlyDay = form.day || null;
         anyTime = true;
       } else if (form.when === 'range') {
-        // «В выбранные даты» для переноса — перенести в эти дни, даже если они
+        // Диапазон с датами у переноса — перенести в эти дни, даже если они
         // позже текущей записи; иначе при датах после неё охотник молча не
-        // нашёл бы ничего. Для новой записи anyTime ни на что не влияет.
-        anyTime = !!option.current;
+        // нашёл бы ничего. Диапазон только по времени — как раньше, «раньше
+        // текущей записи», но в это время. Для новой записи anyTime ни на что
+        // не влияет.
+        anyTime = !!option.current && !!(form.dateFrom || form.dateTo);
       }
 
       const deadline = option.deadline || null;
@@ -1828,7 +1830,7 @@
       if (t.near) parts.push(`подгоняю ближе к ${human(t.near.start)}–${String(t.near.end).slice(11, 16)}`);
       else if (t.onlyDay && t.anyTime) parts.push(`любое время ${dayHuman(t.onlyDay)}`);
       else if (t.onlyDay && t.current) parts.push(`${dayHuman(t.onlyDay)}, раньше ${human(t.current)}`);
-      else if (t.anyTime && t.current) parts.push('перенесу в выбранные даты, в любое время');
+      else if (t.anyTime && t.current) parts.push('перенесу в выбранные даты');
       else if (t.onlyDay) parts.push(`только ${dayHuman(t.onlyDay)}`);
       else if (t.current) parts.push(`раньше ${human(t.current)}`);
 
@@ -1922,15 +1924,16 @@
     // только после выбора своего пункта («в выбранные даты», «только в
     // определённое время»); скрытые поля не должны молча фильтровать слоты,
     // даже если человек успел их заполнить и передумал.
-    // Даты применяются только с пунктом «в выбранные даты» (одна и та же дата
-    // в «с» и «по» — один день). Время — отдельно, для любого варианта;
-    // пустое время — любое.
+    // Даты и время задаются внутри пункта «выбрать диапазон», независимо друг
+    // от друга: можно только даты, только время или и то и другое. Одна и та
+    // же дата в «с» и «по» — один день. У других пунктов поля скрыты и не
+    // применяются, даже если человек успел их заполнить.
     function normalizeForm(form) {
       const f = { ...(form || {}) };
       if (f.when === 'range') {
         if (f.dateFrom && f.dateFrom === f.dateTo) { f.when = 'onlyDay'; f.day = f.dateFrom; f.dateFrom = ''; f.dateTo = ''; }
       } else {
-        f.dateFrom = ''; f.dateTo = '';
+        f.dateFrom = ''; f.dateTo = ''; f.timeFrom = ''; f.timeTo = '';
       }
       return f;
     }
@@ -2616,12 +2619,13 @@
     const opts = [
       ['earlier', option.current ? 'раньше, чем сейчас записано' : 'как можно раньше'],
       ...(option.current ? [['sameDayEarlier', 'в тот же день, но раньше']] : []),
-      ['range', 'в выбранные даты'],
+      ['range', 'выбрать диапазон'],
     ];
     // Даты и время раньше прятались в свёрнутый блок «Дополнительно» внизу —
-    // их не замечали. Даты — под пунктом «в выбранные даты» (как поле адреса
-    // под «адрес содержит»), время — отдельной строкой для любого варианта:
-    // «в любой день, но после 18:00» — частый случай (см. ui.normalizeForm).
+    // их не замечали. Теперь они под пунктом «выбрать диапазон» (как поле
+    // адреса под «адрес содержит») и не зависят друг от друга: можно только
+    // даты, только время («в любой день, но после 18:00») или оба
+    // (см. ui.normalizeForm).
     const input = (type, key) => h('input', { type, value: form[key], onchange: (e) => quiet({ [key]: e.target.value }) });
     const range = (label, from, to, toWord) => h('div', { class: 'esh-range' }, [
       h('span', { text: label }), from, h('span', { text: toWord }), to,
@@ -2632,15 +2636,17 @@
         h('input', { type: 'radio', name: 'when-' + option.id, checked: form.when === val, onchange: () => update({ when: val }) }),
         h('span', { text }),
       ]));
-      if (val === 'range' && form.when === 'range') {
-        rows.push(range('с', input('date', 'dateFrom'), input('date', 'dateTo'), 'по'));
-        rows.push(h('p', { class: 'esh-note', text: option.current
-          ? 'Один день — одна и та же дата в обоих полях. Перенесу в эти дни, даже если они позже текущей записи.'
-          : 'Один день — одна и та же дата в обоих полях.' }));
-      }
     }
-    rows.push(range('время с', input('time', 'timeFrom'), input('time', 'timeTo'), 'до'));
-    rows.push(h('p', { class: 'esh-note', text: 'Пусто — любое время. Только вечером — с 18:00, только утром — до 9:00, до и после работы — с 18:00 до 9:00.' }));
+    if (form.when === 'range') {
+      rows.push(range('даты с', input('date', 'dateFrom'), input('date', 'dateTo'), 'по'));
+      rows.push(range('время с', input('time', 'timeFrom'), input('time', 'timeTo'), 'до'));
+      rows.push(h('p', { class: 'esh-note', text: [
+        'Можно заполнить только даты, только время или и то и другое.',
+        'Один день — одна и та же дата в обоих полях.',
+        'Время: только вечером — с 18:00, только утром — до 9:00, до и после работы — с 18:00 до 9:00.',
+        ...(option.current ? ['Если указаны даты, перенесу в эти дни, даже если они позже текущей записи.'] : []),
+      ].join(' ') }));
+    }
     return h('div', {}, rows);
   }
 
@@ -2719,7 +2725,7 @@
 
   function stepTwoError(option, form) {
     if (form.when === 'range') {
-      if (!form.dateFrom && !form.dateTo) return 'укажите даты';
+      if (!form.dateFrom && !form.dateTo && !form.timeFrom && !form.timeTo) return 'укажите даты или время';
       if (form.dateFrom && form.dateTo && form.dateFrom > form.dateTo) return 'дата «с» позже даты «по»';
     }
     if (form.where === 'contains') {

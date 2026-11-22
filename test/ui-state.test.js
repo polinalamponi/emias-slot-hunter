@@ -217,17 +217,27 @@ test('buildTarget: у «выбранного дня» диапазон дат н
   assert.equal(t.timeTo, '10:00');
 });
 
-test('normalizeForm: у «как можно раньше» даты не применяются, а время — применяется', () => {
+test('normalizeForm: у «как можно раньше» скрытые даты и время не применяются', () => {
   const filled = { when: 'earlier', dateFrom: '2026-10-10', dateTo: '2026-10-20', timeFrom: '18:00', timeTo: '' };
   const f = ui.normalizeForm(filled);
-  assert.deepEqual([f.dateFrom, f.dateTo, f.timeFrom], ['', '', '18:00']);
-  const t = ui.buildTarget({ ...option, current: null }, { ...f, where: 'any', mode: 'auto' });
-  assert.equal(t.timeFrom, '18:00');
-  assert.match(ui.describeTarget(t), /время после 18:00/);
+  assert.deepEqual([f.dateFrom, f.dateTo, f.timeFrom, f.timeTo], ['', '', '', '']);
   assert.equal(filled.dateFrom, '2026-10-10', 'сама форма не меняется — вернувшись к пункту, человек увидит свои даты');
 });
 
-test('«в выбранные даты»: диапазон, время по желанию', () => {
+test('диапазон только по времени: в любой день, но после 18:00', () => {
+  const f = ui.normalizeForm({ when: 'range', dateFrom: '', dateTo: '', timeFrom: '18:00', timeTo: '' });
+  const t = ui.buildTarget({ ...option, current: null }, { ...f, where: 'any', mode: 'auto' });
+  assert.equal(t.dateFrom, null);
+  assert.equal(t.dateTo, null);
+  assert.equal(t.timeFrom, '18:00');
+  assert.match(ui.describeTarget(t), /время после 18:00/);
+  // у переноса без дат — по-прежнему «раньше текущей записи», но в это время
+  const shift = ui.buildTarget(option, { ...f, where: 'any', mode: 'auto' });
+  assert.equal(shift.anyTime, false);
+  assert.equal(shift.timeFrom, '18:00');
+});
+
+test('диапазон: даты и время вместе', () => {
   const t = ui.buildTarget({ ...option, current: null }, { ...ui.normalizeForm({ when: 'range', dateFrom: '2026-10-10', dateTo: '2026-10-20', timeFrom: '08:00', timeTo: '' }), where: 'any', mode: 'auto' });
   assert.equal(t.onlyDay, null);
   assert.equal(t.dateFrom, '2026-10-10');
@@ -236,7 +246,7 @@ test('«в выбранные даты»: диапазон, время по же
   assert.equal(t.timeTo, null, 'не указано — без ограничения');
 });
 
-test('«в выбранные даты» с одной датой — это один день, в любое время', () => {
+test('диапазон с одной датой — это один день, в любое время', () => {
   const f = ui.normalizeForm({ when: 'range', dateFrom: '2026-10-12', dateTo: '2026-10-12', timeFrom: '', timeTo: '' });
   const t = ui.buildTarget(option, { ...f, where: 'any', mode: 'auto' });
   assert.equal(t.onlyDay, '2026-10-12');
@@ -244,7 +254,7 @@ test('«в выбранные даты» с одной датой — это о�
   assert.equal(t.dateFrom, null);
 });
 
-test('перенос «в выбранные даты»: в эти дни, даже позже текущей записи', () => {
+test('перенос с диапазоном дат: в эти дни, даже позже текущей записи', () => {
   // option.current — 30 сентября; даты после неё не должны отсекаться как «позже текущей записи».
   const t = ui.buildTarget(option, { ...ui.normalizeForm({ when: 'range', dateFrom: '2026-10-05', dateTo: '2026-10-09' }), where: 'any', mode: 'auto' });
   assert.equal(t.anyTime, true);
