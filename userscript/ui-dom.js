@@ -265,10 +265,10 @@
       .esh-root { position: fixed; right: 16px; bottom: 16px; z-index: 999999; display: flex; flex-direction: column; align-items: flex-end; gap: 8px; }
       .esh-badge { cursor: pointer; border: none; border-radius: 20px; padding: 10px 16px; font-size: 14px; color: #fff; background: #5b6472; box-shadow: 0 2px 8px rgba(0,0,0,.25); white-space: nowrap; }
       .esh-badge.k-idle, .esh-badge.k-init { background: #5b6472; }
-      .esh-badge.k-running, .esh-badge.k-resuming { background: #2e9e5b; }
-      .esh-badge.k-booked { background: #e08a2b; }
-      .esh-badge.k-standby { background: #3a7bd5; }
-      .esh-badge.k-paused { background: #8a6d3b; }
+      .esh-badge.k-running, .esh-badge.k-resuming { background: #2e7dd7; }
+      .esh-badge.k-booked { background: #2e9e5b; }
+      .esh-badge.k-standby { background: #6b7a90; }
+      .esh-badge.k-paused { background: #6b7a90; }
       .esh-badge.k-needLogin, .esh-badge.k-needIdentity, .esh-badge.k-sessionLost, .esh-badge.k-stale, .esh-badge.k-resumeError, .esh-badge.k-needDryRun { background: #d64545; }
       .esh-sub { display: block; font-size: 11px; opacity: .85; font-weight: normal; }
       .esh-card { width: 320px; max-width: calc(100vw - 32px); box-sizing: border-box; max-height: 70vh; overflow: auto; background: #fff; color: #222; border-radius: 12px; box-shadow: 0 4px 20px rgba(0,0,0,.3); padding: 14px; }
@@ -451,7 +451,7 @@
       return;
     }
     if (r.status === 'started') {
-      if (!showBookedBadge()) setBadge({ kind: 'running', text: '🟢 Ищу слоты', detail: runningDetail() });
+      if (!showBookedBadge()) setBadge({ kind: 'running', text: '👀 Ищу слоты', detail: runningDetail() });
       startStatusRefresh();
       if (standbyRetryId) { clearInterval(standbyRetryId); standbyRetryId = null; }
       hidePanel();
@@ -849,7 +849,7 @@
   function renderStep4() {
     clear(dom.panel);
     dom.panel.appendChild(h('h3', { text: 'Готово' }));
-    dom.panel.appendChild(h('p', {}, 'Слежу за расписанием. Значок будет зелёным, пока идёт поиск.'));
+    dom.panel.appendChild(h('p', {}, 'Слежу за расписанием. Пока идёт поиск, на значке 👀, а когда запишу — ✅.'));
     const titles = (wizard.builtTargets || []).map((t) => t.title).join(', ');
     if (titles) dom.panel.appendChild(h('p', { class: 'esh-note', text: 'Слежу за: ' + titles }));
     dom.panel.appendChild(h('div', { class: 'esh-btns' }, [
@@ -874,7 +874,7 @@
       runningFor = wizard.report.targetsHash;
       // Minor: сразу после старта проверок ещё не было — не выдумываем время
       // последней проверки.
-      setBadge({ kind: 'running', text: '🟢 Ищу слоты', detail: 'первая проверка через минуту' });
+      setBadge({ kind: 'running', text: '👀 Ищу слоты', detail: 'первая проверка через минуту' });
       startStatusRefresh();
       openWizard(4);
     } catch (e) {
@@ -1133,32 +1133,32 @@
     // меняет только сами targets.
     const cfg = ui.loadConfig(storage);
     const nextCfg = ui.applyBookedUpdate(cfg, payload);
-    // lastBooked держит оранжевый значок, пока человек его не увидит (клик),
+    // lastBooked держит значок «✅ Записано», пока человек его не увидит (клик),
     // в том числе после перезагрузки страницы.
     if (nextCfg) ui.saveConfig(storage, { ...nextCfg, lastBooked: { title: payload.title, startTime: payload.slot.startTime, address: payload.address || null } });
     // Minor: раньше при возврате из «Записано» цвет менялся обратно, а текст
-    // оставался старым («🟠 Записано: …») — запоминаем значок целиком (а не
+    // оставался старым («✅ Записано: …») — запоминаем значок целиком (а не
     // только его kind), чтобы вернуть и текст тоже.
     if (badgeState.kind !== 'booked') preBookedBadge = { ...badgeState };
-    if (!showBookedBadge()) setBadge({ kind: 'booked', text: '🟠 Записано: ' + payload.title, detail: '' });
+    if (!showBookedBadge()) setBadge({ kind: 'booked', text: '✅ Записано: ' + payload.title, detail: '' });
     maybeShowThanks();
   }
 
   // Раньше значок «Записано» через 8 секунд сам возвращался к «Ищу слоты», и
   // если человек не смотрел на экран, о переносе он не узнавал. Теперь значок
-  // остаётся оранжевым, пока по нему не кликнут (и после перезагрузки тоже).
+  // остаётся зелёным «✅ Записано», пока по нему не кликнут (и после перезагрузки тоже).
   function showBookedBadge() {
     const cfg = ui.loadConfig(storage);
     const b = cfg && cfg.lastBooked;
     if (!b) return false;
-    setBadge({ kind: 'booked', text: '🟠 Записано: ' + b.title, detail: b.startTime ? 'на ' + ui.human(b.startTime) + ' — нажмите, чтобы посмотреть' : '' });
+    setBadge({ kind: 'booked', text: '✅ Записано: ' + b.title, detail: b.startTime ? 'на ' + ui.human(b.startTime) + ' — нажмите, чтобы посмотреть' : '' });
     return true;
   }
 
   function acknowledgeBooked() {
     const cfg = ui.loadConfig(storage);
     if (cfg && cfg.lastBooked) { const next = { ...cfg }; delete next.lastBooked; ui.saveConfig(storage, next); }
-    if (core.status().running) setBadge({ kind: 'running', text: '🟢 Ищу слоты', detail: runningDetail() });
+    if (core.status().running) setBadge({ kind: 'running', text: '👀 Ищу слоты', detail: runningDetail() });
     else if (finishedAll) setBadge({ kind: 'idle', text: '✅ Готово', detail: 'все цели выполнены' });
     else if (preBookedBadge) setBadge(preBookedBadge);
   }
@@ -1255,7 +1255,7 @@
     statusRefreshId = setInterval(() => {
       if (yieldIfReconfigured()) return;
       if (badgeState.kind !== 'running' && badgeState.kind !== 'resuming') return;
-      setBadge({ kind: 'running', text: '🟢 Ищу слоты', detail: runningDetail() });
+      setBadge({ kind: 'running', text: '👀 Ищу слоты', detail: runningDetail() });
       if (panelMode === 'status') renderStatusPanel();
     }, 5000);
   }
@@ -1304,7 +1304,7 @@
       if (st.lastOkAt > since) {
         clearInterval(recoveryWatchId);
         recoveryWatchId = null;
-        setBadge({ kind: 'running', text: '🟢 Ищу слоты', detail: runningDetail() });
+        setBadge({ kind: 'running', text: '👀 Ищу слоты', detail: runningDetail() });
         startStatusRefresh();
       }
     }, 5000);
@@ -1354,7 +1354,7 @@
         if (r.status !== 'started') return;
         if (standbyRetryId) clearInterval(standbyRetryId);
         standbyRetryId = null;
-        setBadge({ kind: 'running', text: '🟢 Ищу слоты', detail: runningDetail() });
+        setBadge({ kind: 'running', text: '👀 Ищу слоты', detail: runningDetail() });
         startStatusRefresh();
         if (panelMode === 'standby') hidePanel();
       } catch (e) {
@@ -1445,7 +1445,7 @@
       return;
     }
 
-    setBadge({ kind: 'resuming', text: '🟢 Возобновляю поиск…', detail: '' });
+    setBadge({ kind: 'resuming', text: '👀 Возобновляю поиск…', detail: '' });
     let r;
     try {
       r = await startFromSavedConfig();
@@ -1455,7 +1455,7 @@
     }
 
     if (r.status === 'started') {
-      if (!showBookedBadge()) setBadge({ kind: 'running', text: '🟢 Ищу слоты', detail: runningDetail() });
+      if (!showBookedBadge()) setBadge({ kind: 'running', text: '👀 Ищу слоты', detail: runningDetail() });
       startStatusRefresh();
     } else if (r.status === 'mismatch') {
       showReconfirm(r.cfg, r.report);
