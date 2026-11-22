@@ -638,7 +638,7 @@
         when: 'earlier',
         day: '', dateFrom: '', dateTo: '', timeFrom: '', timeTo: '',
         where: option.address ? 'sameCampus' : 'any', addressContains: '',
-        respectTravel: true, mode: 'auto', purpose: 'unwell',
+        respectTravel: true, mode: 'auto', purpose: 'unwell', afterBooking: 'stop',
       };
     }
     return wizard.forms[option.id];
@@ -745,6 +745,17 @@
         h('span', { text: 'сначала спрашивать' }),
       ]),
       h('p', { class: 'esh-note', text: 'О записи сообщит сам ЕМИАС — push в приложении ЕМИАС на телефоне и письмо на почту, как при обычной записи. Сидеть у компьютера не нужно. В режиме «сначала спрашивать» на ответ 60 секунд, и спросить скрипт может только в этой вкладке.' }),
+    ]));
+    card.appendChild(h('label', { class: 'esh-field', text: 'После записи' }));
+    card.appendChild(h('div', {}, [
+      h('label', { class: 'esh-row' }, [
+        h('input', { type: 'radio', name: 'after-' + option.id, checked: form.afterBooking !== 'improve', onchange: () => update({ afterBooking: 'stop' }) }),
+        h('span', { text: 'остановиться' }),
+      ]),
+      h('label', { class: 'esh-row' }, [
+        h('input', { type: 'radio', name: 'after-' + option.id, checked: form.afterBooking === 'improve', onchange: () => update({ afterBooking: 'improve' }) }),
+        h('span', { text: 'искать ещё раньше и переносить запись' }),
+      ]),
     ]));
     card.appendChild(advancedFields(form, quiet));
     const error = stepTwoError(option, form);

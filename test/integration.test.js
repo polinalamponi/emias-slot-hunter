@@ -269,3 +269,24 @@ test('одна активная вкладка: вкладка без подтв
   assert.equal(a.status().running, true, 'работающая вкладка не должна была остановиться');
   assert.equal(standbyA.length, 0, 'claim от вкладки, не прошедшей гейт, вообще не должен был уйти в канал');
 });
+
+// «После записи: остановиться» (по умолчанию в мастере): цель выполнена
+// одной записью, дальше охотник по ней не ищет и ничего не переносит.
+test('после записи «остановиться»: цель done, следующая проверка её не трогает', async () => {
+  const e = env();
+  const now = () => Date.parse('2026-09-23T06:00:00Z');
+  const h = create({ storage: e.storage, fetch: e.fetchFn, now, timer: e.timer, channel: null, modules });
+  await h.init({ identity: { oms: OMS, birth: '2000-01-01' } });
+  const lab = (await h.discover()).find((o) => o.scenario === 'bookLab');
+  h.setTargets([{ ...lab, mode: 'auto', minLeadMs: 2 * 3600000, travelMs: 3600000, respectTravel: true, dateTo: '2026-10-14', keepImproving: false }]);
+  const report = await h.dryRun();
+  h.confirmDryRun(report.id);
+  await h.start();
+  await e.timer.queue.shift()();
+  assert.ok(e.booked(), 'слот записан');
+  assert.equal(h.status().targets[0].state, 'done');
+  const firstBooking = e.bookingRequest();
+  if (e.timer.queue.length) await e.timer.queue.shift()();
+  assert.equal(e.bookingRequest(), firstBooking, 'повторных записей и переносов нет');
+  h.stop();
+});

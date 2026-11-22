@@ -132,16 +132,21 @@ test('describeTarget: prefer с timeTo и near вместе называют в�
   assert.match(s, /11:15/);
 });
 
-test('buildTarget: keepImproving зависит только от сценария', () => {
+test('buildTarget: по умолчанию после записи останавливаемся', () => {
   const lab = ui.buildTarget({ ...option, scenario: 'bookLab' }, { when: 'earlier', where: 'any', mode: 'auto' });
-  const referral = ui.buildTarget({ ...option, scenario: 'bookReferral' }, { when: 'earlier', where: 'any', mode: 'auto' });
-  assert.equal(lab.keepImproving, true);
-  assert.equal(referral.keepImproving, false);
+  assert.equal(lab.keepImproving, false);
+  assert.match(ui.describeTarget(lab), /после записи останавливаюсь/);
 });
 
-test('buildTarget: bookDoctor тоже получает keepImproving: true', () => {
-  const doctor = ui.buildTarget({ ...option, scenario: 'bookDoctor', source: { referralId: 1, needPurpose: false } }, { when: 'earlier', where: 'any', mode: 'auto' });
+test('buildTarget: «искать ещё раньше» включает keepImproving, кроме bookReferral', () => {
+  const form = { when: 'earlier', where: 'any', mode: 'auto', afterBooking: 'improve' };
+  const lab = ui.buildTarget({ ...option, scenario: 'bookLab' }, form);
+  const doctor = ui.buildTarget({ ...option, scenario: 'bookDoctor', source: { referralId: 1, needPurpose: false } }, form);
+  const referral = ui.buildTarget({ ...option, scenario: 'bookReferral' }, form);
+  assert.equal(lab.keepImproving, true);
   assert.equal(doctor.keepImproving, true);
+  assert.equal(referral.keepImproving, false);
+  assert.match(ui.describeTarget(lab), /после записи ищу ещё раньше и переношу/);
 });
 
 // ---- Task 12b: bookDoctor — цель визита ----
@@ -180,7 +185,7 @@ test('describeTarget: bookLdp формулируется как «Запишу �
   };
   const t = ui.buildTarget(ldpOption, { when: 'earlier', where: 'any', mode: 'auto' });
   assert.equal(t.purpose, null);
-  assert.equal(t.keepImproving, true);
+  assert.equal(t.keepImproving, false);
   const s = ui.describeTarget(t);
   assert.match(s, /^Запишу на Электрокардиография по направлению до 5 октября/);
   assert.doesNotMatch(s, /с .* по 5 октября/, 'дата уже в начале фразы — не дублируем');

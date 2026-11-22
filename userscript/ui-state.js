@@ -63,7 +63,9 @@
         respectTravel: form.respectTravel !== false,
         travelMs: 60 * 60000,
         minLeadMs: 2 * 60 * 60000,
-        keepImproving: option.scenario !== 'bookReferral',
+        // По умолчанию после первой записи останавливаемся: время приёма не
+        // должно неожиданно «уезжать». «Искать ещё раньше» — явный выбор.
+        keepImproving: option.scenario !== 'bookReferral' && form.afterBooking === 'improve',
         mode: form.mode === 'confirm' ? 'confirm' : 'auto',
         purpose: (option.source && option.source.needPurpose) ? (() => {
           const chosen = INQUIRY_PURPOSES[form.purpose === 'documents' ? 'documents' : 'unwell'];
@@ -107,6 +109,7 @@
       if (t.purpose) parts.push(`цель визита: ${purposeTitle(t.purpose)}`);
       if (t.respectTravel) parts.push('с запасом на дорогу');
       parts.push(t.mode === 'confirm' ? 'спрашиваю перед записью' : 'записываю сразу');
+      parts.push(t.keepImproving ? 'после записи ищу ещё раньше и переношу' : 'после записи останавливаюсь');
 
       // bookDoctor и bookLdp — запись по направлению без текущей записи, для неё
       // отдельная формулировка «Запишу к <специальность> / на <исследование> по

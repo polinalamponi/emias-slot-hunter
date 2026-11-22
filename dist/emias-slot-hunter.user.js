@@ -1791,7 +1791,9 @@
         respectTravel: form.respectTravel !== false,
         travelMs: 60 * 60000,
         minLeadMs: 2 * 60 * 60000,
-        keepImproving: option.scenario !== 'bookReferral',
+        // По умолчанию после первой записи останавливаемся: время приёма не
+        // должно неожиданно «уезжать». «Искать ещё раньше» — явный выбор.
+        keepImproving: option.scenario !== 'bookReferral' && form.afterBooking === 'improve',
         mode: form.mode === 'confirm' ? 'confirm' : 'auto',
         purpose: (option.source && option.source.needPurpose) ? (() => {
           const chosen = INQUIRY_PURPOSES[form.purpose === 'documents' ? 'documents' : 'unwell'];
@@ -1835,6 +1837,7 @@
       if (t.purpose) parts.push(`цель визита: ${purposeTitle(t.purpose)}`);
       if (t.respectTravel) parts.push('с запасом на дорогу');
       parts.push(t.mode === 'confirm' ? 'спрашиваю перед записью' : 'записываю сразу');
+      parts.push(t.keepImproving ? 'после записи ищу ещё раньше и переношу' : 'после записи останавливаюсь');
 
       // bookDoctor и bookLdp — запись по направлению без текущей записи, для неё
       // отдельная формулировка «Запишу к <специальность> / на <исследование> по
@@ -2547,7 +2550,7 @@
         when: 'earlier',
         day: '', dateFrom: '', dateTo: '', timeFrom: '', timeTo: '',
         where: option.address ? 'sameCampus' : 'any', addressContains: '',
-        respectTravel: true, mode: 'auto', purpose: 'unwell',
+        respectTravel: true, mode: 'auto', purpose: 'unwell', afterBooking: 'stop',
       };
     }
     return wizard.forms[option.id];
@@ -2654,6 +2657,17 @@
         h('span', { text: 'сначала спрашивать' }),
       ]),
       h('p', { class: 'esh-note', text: 'О записи сообщит сам ЕМИАС — push в приложении ЕМИАС на телефоне и письмо на почту, как при обычной записи. Сидеть у компьютера не нужно. В режиме «сначала спрашивать» на ответ 60 секунд, и спросить скрипт может только в этой вкладке.' }),
+    ]));
+    card.appendChild(h('label', { class: 'esh-field', text: 'После записи' }));
+    card.appendChild(h('div', {}, [
+      h('label', { class: 'esh-row' }, [
+        h('input', { type: 'radio', name: 'after-' + option.id, checked: form.afterBooking !== 'improve', onchange: () => update({ afterBooking: 'stop' }) }),
+        h('span', { text: 'остановиться' }),
+      ]),
+      h('label', { class: 'esh-row' }, [
+        h('input', { type: 'radio', name: 'after-' + option.id, checked: form.afterBooking === 'improve', onchange: () => update({ afterBooking: 'improve' }) }),
+        h('span', { text: 'искать ещё раньше и переносить запись' }),
+      ]),
     ]));
     card.appendChild(advancedFields(form, quiet));
     const error = stepTwoError(option, form);
