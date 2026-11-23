@@ -337,9 +337,27 @@ test('интерфейс: после записи предлагает угос�
   assert.equal(link.target, '_blank');
   assert.equal(link.rel, 'noopener noreferrer');
   assert.ok(JSON.parse(env.storage.getItem('emiasSlotHunter:thanks')).shownAt, 'время показа запомнено');
-  const later = card.querySelectorAll('button').find((b) => b.textContent === 'Не сейчас');
+  assert.match(card.querySelector('.esh-thanks-title').textContent, /^🎉 Охотник записал вас на \d+ [а-я]+, \d{1,2}:\d\d$/);
+  assert.equal(card.querySelector('.esh-sign').textContent, 'Полина, автор проекта');
+  const later = card.querySelectorAll('button').find((b) => b.textContent === '😒 Не сейчас');
   later.click();
   assert.equal(ui.root.querySelectorAll('.esh-thanks').length, 0, '«Не сейчас» убирает карточку');
+});
+
+// «Угостить кофе»: ссылка открывается в новой вкладке, а в карточке вместо
+// просьбы остаётся «Спасибо и здоровья вам!», и 3 месяца карточки не будет.
+test('интерфейс: после «Угостить кофе» карточка благодарит', async () => {
+  const env = await environment({ mode: 'auto', scenario: 'bookLab' });
+  const ui = await mountUi(env);
+  await env.timer.queue.shift()();
+  await new Promise(setImmediate);
+  const card = ui.root.querySelector('.esh-thanks');
+  card.querySelectorAll('a')[0].click();
+  const after = ui.root.querySelectorAll('.esh-thanks');
+  assert.equal(after.length, 1);
+  assert.equal(after[0].textContent, 'Спасибо и здоровья вам! 💚');
+  assert.equal(after[0].querySelectorAll('a').length, 0, 'ссылки и кнопок больше нет');
+  assert.ok(JSON.parse(env.storage.getItem('emiasSlotHunter:thanks')).donatedAt, 'нажатие запомнено');
 });
 
 // ЕМИАС впускает без перезагрузки страницы: значок «Войдите в ЕМИАС» должен

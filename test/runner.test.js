@@ -699,6 +699,26 @@ test('C1: событие booked несёт current/source/scenario цели ПО
   assert.equal(booked.payload.current, '2026-09-24T10:30:00+03:00', 'booked должен нести новое current, а не старое из cfg.targets');
   assert.equal(booked.payload.source.appointmentId, 42);
   assert.equal(booked.payload.scenario, 'shiftLab', 'bookLab после keepImproving становится shiftLab');
+  assert.equal(booked.payload.previous, null, 'у новой записи прежнего времени нет');
+});
+
+test('booked при переносе несёт прежнее время записи (previous), даже после keepImproving', async () => {
+  const h = harness({
+    search: async () => ({ candidates: [cand], rejected: [], notes: [] }),
+    act: async () => ({
+      ok: true, verified: true, message: 'Готово',
+      newAppointment: { id: 43, startTime: '2026-09-24T09:00:00', lpuId: 1 },
+    }),
+  });
+  h.runner.setTargets([{ id: 'appt:7', scenario: 'shiftLab', title: 'Кровь', mode: 'auto', keepImproving: true,
+    current: '2026-10-06T13:45:00+03:00', source: { appointmentId: 7, moId: 1, samplingTypeId: 1 } }]);
+  h.runner.confirmDryRun((await h.runner.dryRun()).id);
+  await h.runner.start();
+  await h.runner.tick();
+  const booked = h.events.find((e) => e.type === 'booked');
+  assert.ok(booked, 'должно быть событие booked');
+  assert.equal(booked.payload.previous, '2026-10-06T13:45:00+03:00');
+  assert.equal(booked.payload.current, '2026-09-24T09:00:00+03:00');
 });
 
 test('M-1: lastCheckAt ставится только настоящей проверкой в tick(), а не start()', async () => {

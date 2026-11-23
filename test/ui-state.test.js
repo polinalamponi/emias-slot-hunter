@@ -207,6 +207,26 @@ test('shouldShowThanks: не чаще раза в 3 дня, после «Уго�
   assert.equal(ui.shouldShowThanks({ donatedAt: now - 91 * DAY, shownAt: now - 91 * DAY }, now), true, 'прошло 3 месяца');
 });
 
+test('bookedHeadline: новая запись, перенос раньше на дни и на часы, перенос не раньше', () => {
+  const slot = (startTime) => ({ startTime });
+  assert.equal(ui.bookedHeadline({ slot: slot('2026-12-03T09:15:00+03:00'), previous: null }),
+    '🎉 Охотник записал вас на 3 декабря, 9:15');
+  assert.equal(ui.bookedHeadline({ slot: slot('2026-12-03T09:15:00+03:00'), previous: '2026-12-15T13:45:00+03:00' }),
+    '🎉 Перенёс запись на 3 декабря, 9:15. Это на 12 дней раньше.');
+  assert.equal(ui.bookedHeadline({ slot: slot('2026-12-31T10:00:00+03:00'), previous: '2027-01-01T08:00:00+03:00' }),
+    '🎉 Перенёс запись на 31 декабря, 10:00. Это на 1 день раньше.', 'через Новый год, 1 день');
+  assert.match(ui.bookedHeadline({ slot: slot('2026-12-01T10:00:00+03:00'), previous: '2026-12-22T10:00:00+03:00' }), /на 21 день раньше/);
+  assert.match(ui.bookedHeadline({ slot: slot('2026-12-01T10:00:00+03:00'), previous: '2026-12-04T10:00:00+03:00' }), /на 3 дня раньше/);
+  assert.match(ui.bookedHeadline({ slot: slot('2026-12-01T10:00:00+03:00'), previous: '2026-12-12T10:00:00+03:00' }), /на 11 дней раньше/);
+  assert.equal(ui.bookedHeadline({ slot: slot('2026-12-03T09:15:00+03:00'), previous: '2026-12-03T11:45:00+03:00' }),
+    '🎉 Перенёс запись на 3 декабря, 9:15. Это на 2 часа 30 минут раньше.', 'в тот же день');
+  assert.match(ui.bookedHeadline({ slot: slot('2026-12-03T09:15:00+03:00'), previous: '2026-12-03T10:16:00+03:00' }), /на 1 час 1 минуту раньше/);
+  assert.match(ui.bookedHeadline({ slot: slot('2026-12-03T09:15:00+03:00'), previous: '2026-12-03T09:40:00+03:00' }), /на 25 минут раньше/);
+  assert.equal(ui.bookedHeadline({ slot: slot('2026-12-20T18:30:00+03:00'), previous: '2026-12-15T09:00:00+03:00' }),
+    '🎉 Перенёс запись на 20 декабря, 18:30', 'перенос на более удобное, но позднее время: без «раньше»');
+  assert.equal(ui.bookedHeadline({}), '🎉 Охотник записал вас', 'без времени не падаем');
+});
+
 test('buildTarget: у «выбранного дня» диапазон дат не применяется, время — применяется', () => {
   const t = ui.buildTarget(option, { when: 'onlyDay', day: '2026-10-05', where: 'any', mode: 'auto',
     dateFrom: '2026-10-10', dateTo: '2026-10-20', timeFrom: '08:00', timeTo: '10:00' });

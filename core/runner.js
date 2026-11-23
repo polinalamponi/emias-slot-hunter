@@ -269,6 +269,9 @@
       if (res.cancelled) return cancelled;
 
       if (res.ok && res.verified) {
+        // Время записи до переноса: обвязка показывает, на сколько стало
+        // раньше. Берём до мутации keepImproving ниже; у новой записи его нет.
+        const previous = String(t.scenario || '').startsWith('shift') ? (t.current || null) : null;
         state.byId[t.id] = { state: t.keepImproving ? 'improving' : 'done', note: res.message };
         delete state.verifyFailedKey[t.id];
         if (t.keepImproving && res.newAppointment) {
@@ -302,7 +305,7 @@
         // дыру не поймать ни один гейт, только сама доставка актуальных полей.
         emit('booked', {
           targetId: t.id, title: t.title, slot: cand.slot, address: cand.address, message: res.message,
-          current: t.current, source: t.source, scenario: t.scenario,
+          current: t.current, source: t.source, scenario: t.scenario, previous,
         });
         return res;
       }

@@ -177,6 +177,40 @@
       return changed ? { ...cfg, targets } : cfg;
     }
 
+    // Заголовок карточки после успешной записи. Новая запись: «Охотник
+    // записал вас на 3 декабря, 9:15». Перенос: «Перенёс запись на …» и, если
+    // стало раньше, на сколько. Время московское в обеих строках, поэтому
+    // сравниваем сами строки дат и времени, без часовых поясов.
+    const plural = (n, forms) => {
+      const a = n % 100; const b = n % 10;
+      return forms[a > 10 && a < 20 ? 2 : b === 1 ? 0 : b >= 2 && b <= 4 ? 1 : 2];
+    };
+    const humanShort = (iso) => human(iso).replace(/, 0(\d:)/, ', $1');
+    function earlierBy(prevIso, nextIso) {
+      const pd = String(prevIso).slice(0, 10); const nd = String(nextIso).slice(0, 10);
+      if (nd < pd) {
+        const days = Math.round((Date.parse(pd + 'T00:00:00Z') - Date.parse(nd + 'T00:00:00Z')) / 86400000);
+        return `${days} ${plural(days, ['день', 'дня', 'дней'])}`;
+      }
+      if (nd > pd) return null;
+      const toMin = (iso) => { const t = String(iso).slice(11, 16).split(':'); return Number(t[0]) * 60 + Number(t[1]); };
+      const mins = toMin(prevIso) - toMin(nextIso);
+      if (!(mins > 0)) return null;
+      const hh = Math.floor(mins / 60); const mm = mins % 60;
+      const parts = [];
+      if (hh) parts.push(`${hh} ${plural(hh, ['час', 'часа', 'часов'])}`);
+      if (mm) parts.push(`${mm} ${plural(mm, ['минуту', 'минуты', 'минут'])}`);
+      return parts.join(' ');
+    }
+    function bookedHeadline(p) {
+      const at = p && p.slot && p.slot.startTime;
+      if (!at) return '🎉 Охотник записал вас';
+      const when = humanShort(at);
+      if (!p.previous) return `🎉 Охотник записал вас на ${when}`;
+      const gain = earlierBy(p.previous, at);
+      return gain ? `🎉 Перенёс запись на ${when}. Это на ${gain} раньше.` : `🎉 Перенёс запись на ${when}`;
+    }
+
     // Карточка «угостите автора кофе» после успешной записи: не чаще раза
     // в 3 дня, а после нажатия «Угостить кофе» — 3 месяца не показываем.
     const THANKS_PAUSE_MS = 3 * 24 * 3600000;
@@ -260,7 +294,7 @@
     return {
       normalizeForm, cleanTag, tagsToFilter, humanFilter,
       buildTarget, describeTarget, describeDryRunItem, saveConfig, loadConfig, applyBookedUpdate, human, stripCampus, KEY,
-      INQUIRY_PURPOSES, shouldShowThanks,
+      INQUIRY_PURPOSES, shouldShowThanks, bookedHeadline,
     };
   }
 

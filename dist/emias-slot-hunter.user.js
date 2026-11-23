@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         ЕМИАС: охотник за слотами
 // @namespace    https://github.com/polinalamponi/emias-slot-hunter
-// @version      0.1.7-test.1
+// @version      0.1.7-test.2
 // @description  Следит за расписанием ЕМИАС и ловит освободившиеся слоты: записывает по направлению и переносит записи на более раннее время
 // @author       polinalamponi
 // @homepageURL  https://github.com/polinalamponi/emias-slot-hunter
@@ -1210,6 +1210,9 @@
       if (res.cancelled) return cancelled;
 
       if (res.ok && res.verified) {
+        // Время записи до переноса: обвязка показывает, на сколько стало
+        // раньше. Берём до мутации keepImproving ниже; у новой записи его нет.
+        const previous = String(t.scenario || '').startsWith('shift') ? (t.current || null) : null;
         state.byId[t.id] = { state: t.keepImproving ? 'improving' : 'done', note: res.message };
         delete state.verifyFailedKey[t.id];
         if (t.keepImproving && res.newAppointment) {
@@ -1243,7 +1246,7 @@
         // дыру не поймать ни один гейт, только сама доставка актуальных полей.
         emit('booked', {
           targetId: t.id, title: t.title, slot: cand.slot, address: cand.address, message: res.message,
-          current: t.current, source: t.source, scenario: t.scenario,
+          current: t.current, source: t.source, scenario: t.scenario, previous,
         });
         return res;
       }
@@ -1936,6 +1939,40 @@
       return changed ? { ...cfg, targets } : cfg;
     }
 
+    // Заголовок карточки после успешной записи. Новая запись: «Охотник
+    // записал вас на 3 декабря, 9:15». Перенос: «Перенёс запись на …» и, если
+    // стало раньше, на сколько. Время московское в обеих строках, поэтому
+    // сравниваем сами строки дат и времени, без часовых поясов.
+    const plural = (n, forms) => {
+      const a = n % 100; const b = n % 10;
+      return forms[a > 10 && a < 20 ? 2 : b === 1 ? 0 : b >= 2 && b <= 4 ? 1 : 2];
+    };
+    const humanShort = (iso) => human(iso).replace(/, 0(\d:)/, ', $1');
+    function earlierBy(prevIso, nextIso) {
+      const pd = String(prevIso).slice(0, 10); const nd = String(nextIso).slice(0, 10);
+      if (nd < pd) {
+        const days = Math.round((Date.parse(pd + 'T00:00:00Z') - Date.parse(nd + 'T00:00:00Z')) / 86400000);
+        return `${days} ${plural(days, ['день', 'дня', 'дней'])}`;
+      }
+      if (nd > pd) return null;
+      const toMin = (iso) => { const t = String(iso).slice(11, 16).split(':'); return Number(t[0]) * 60 + Number(t[1]); };
+      const mins = toMin(prevIso) - toMin(nextIso);
+      if (!(mins > 0)) return null;
+      const hh = Math.floor(mins / 60); const mm = mins % 60;
+      const parts = [];
+      if (hh) parts.push(`${hh} ${plural(hh, ['час', 'часа', 'часов'])}`);
+      if (mm) parts.push(`${mm} ${plural(mm, ['минуту', 'минуты', 'минут'])}`);
+      return parts.join(' ');
+    }
+    function bookedHeadline(p) {
+      const at = p && p.slot && p.slot.startTime;
+      if (!at) return '🎉 Охотник записал вас';
+      const when = humanShort(at);
+      if (!p.previous) return `🎉 Охотник записал вас на ${when}`;
+      const gain = earlierBy(p.previous, at);
+      return gain ? `🎉 Перенёс запись на ${when}. Это на ${gain} раньше.` : `🎉 Перенёс запись на ${when}`;
+    }
+
     // Карточка «угостите автора кофе» после успешной записи: не чаще раза
     // в 3 дня, а после нажатия «Угостить кофе» — 3 месяца не показываем.
     const THANKS_PAUSE_MS = 3 * 24 * 3600000;
@@ -2019,7 +2056,7 @@
     return {
       normalizeForm, cleanTag, tagsToFilter, humanFilter,
       buildTarget, describeTarget, describeDryRunItem, saveConfig, loadConfig, applyBookedUpdate, human, stripCampus, KEY,
-      INQUIRY_PURPOSES, shouldShowThanks,
+      INQUIRY_PURPOSES, shouldShowThanks, bookedHeadline,
     };
   }
 
@@ -2329,6 +2366,8 @@
       .esh-status-target p { margin: 2px 0; }
       .esh-thanks { width: 300px; max-width: calc(100vw - 32px); box-sizing: border-box; background: #eef8ee; border: 1px solid #8cc58c; border-radius: 10px; padding: 10px; margin-bottom: 8px; box-shadow: 0 2px 10px rgba(0,0,0,.2); font-size: 13px; color: #222; }
       .esh-thanks p { margin: 0 0 6px; }
+      .esh-thanks .esh-thanks-title { font-weight: 600; }
+      .esh-thanks .esh-sign { color: #555; font-style: italic; text-align: right; }
       .esh-thanks .esh-btns { margin-top: 8px; }
       .esh-thanks a.esh-btn { text-align: center; text-decoration: none; }
       .esh-confirm { width: 300px; max-width: calc(100vw - 32px); box-sizing: border-box; background: #fff8ea; border: 1px solid #e0b84b; border-radius: 10px; padding: 10px; margin-bottom: 8px; box-shadow: 0 2px 10px rgba(0,0,0,.2); }
@@ -3302,20 +3341,42 @@
 
   function hideThanks() { clear(dom.thanks); }
 
-  function maybeShowThanks() {
+  // Сколько держать «Спасибо» после нажатия «Угостить кофе». Ссылка
+  // открывается в новой вкладке, поэтому отсчёт начинаем, когда человек
+  // вернулся на страницу ЕМИАС, иначе он благодарность не увидит.
+  const THANKS_DONE_MS = 6000;
+
+  function showThanksDone() {
+    clear(dom.thanks);
+    dom.thanks.appendChild(h('div', { class: 'esh-thanks' }, [h('p', { text: 'Спасибо и здоровья вам! 💚' })]));
+    const hideLater = () => setTimeout(hideThanks, THANKS_DONE_MS);
+    if (typeof document.addEventListener === 'function' && document.hidden) {
+      const onVisible = () => {
+        if (document.hidden) return;
+        document.removeEventListener('visibilitychange', onVisible);
+        hideLater();
+      };
+      document.addEventListener('visibilitychange', onVisible);
+    } else {
+      hideLater();
+    }
+  }
+
+  function maybeShowThanks(payload) {
     const now = Date.now();
     if (dom.thanks.children && dom.thanks.children.length) return;
     if (!ui.shouldShowThanks(loadThanks(), now)) return;
     saveThanks({ shownAt: now });
     dom.thanks.appendChild(h('div', { class: 'esh-thanks' }, [
-      h('p', { text: '🎉 Охотник поймал запись!' }),
-      h('p', { text: 'Если он вам помог, угостите автора кофе ☕ Охотник бесплатный, и для меня это знак, что его стоит развивать.' }),
+      h('p', { class: 'esh-thanks-title', text: ui.bookedHeadline(payload) }),
+      h('p', { text: 'Охотник бесплатный. Если он вам помог, угостите автора кофе ☕ Для меня это знак, что его стоит поддерживать.' }),
+      h('p', { class: 'esh-sign', text: 'Полина, автор проекта' }),
       h('div', { class: 'esh-btns' }, [
         h('a', {
           class: 'esh-btn primary', href: DONATE_URL, target: '_blank', rel: 'noopener noreferrer',
-          text: '☕ Угостить кофе', onclick: () => { saveThanks({ donatedAt: Date.now() }); hideThanks(); },
+          text: '☕ Угостить кофе', onclick: () => { saveThanks({ donatedAt: Date.now() }); showThanksDone(); },
         }),
-        h('button', { class: 'esh-btn', text: 'Не сейчас', onclick: hideThanks }),
+        h('button', { class: 'esh-btn', text: '😒 Не сейчас', onclick: hideThanks }),
       ]),
     ]));
   }
@@ -3340,7 +3401,7 @@
     // только его kind), чтобы вернуть и текст тоже.
     if (badgeState.kind !== 'booked') preBookedBadge = { ...badgeState };
     if (!showBookedBadge()) setBadge({ kind: 'booked', text: '✅ Записано: ' + payload.title, detail: '' });
-    maybeShowThanks();
+    maybeShowThanks(payload);
   }
 
   // Раньше значок «Записано» через 8 секунд сам возвращался к «Ищу слоты», и
