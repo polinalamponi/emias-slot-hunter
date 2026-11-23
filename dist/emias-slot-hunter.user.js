@@ -2374,7 +2374,7 @@
     clear(dom.panel);
     const isStale = badgeState.kind === 'stale';
     dom.panel.appendChild(h('h3', { text: isStale ? 'Давно нет ответа от ЕМИАС' : 'Нужно войти в ЕМИАС' }));
-    dom.panel.appendChild(h('p', { text: 'Войдите в ЕМИАС — поиск продолжится сам.' }));
+    dom.panel.appendChild(h('p', { text: 'Войдите в ЕМИАС, и поиск продолжится сам.' }));
     if (badgeState.detail) dom.panel.appendChild(h('p', { class: 'esh-note', text: badgeState.detail }));
     dom.panel.appendChild(h('div', { class: 'esh-btns' }, [
       h('button', { class: 'esh-btn danger', text: 'Остановить поиск', onclick: onStop }),
@@ -2657,8 +2657,8 @@
       rows.push(range('даты с', input('date', 'dateFrom'), input('date', 'dateTo'), 'по'));
       rows.push(range('время с', input('time', 'timeFrom'), input('time', 'timeTo'), 'до'));
       rows.push(h('p', { class: 'esh-note', text: [
-        'Можно только даты, только время или оба. Один день — одна дата в обоих полях.',
-        '«С 18:00 до 9:00» — до или после работы.',
+        'Можно указать только даты, только время или и то и другое. Для одного дня поставьте одну и ту же дату в оба поля.',
+        '«С 18:00 до 9:00» значит до или после работы.',
         ...(option.current ? ['С датами перенесу в эти дни, даже если они позже текущей записи.'] : []),
       ].join(' ') }));
     }
@@ -2682,7 +2682,7 @@
       }),
       h('p', {
         class: 'esh-note',
-        text: 'Несколько вариантов: «+» — подходит, «-» — исключить. Например: +знамя труда +остафьево -шишкин',
+        text: 'Можно несколько вариантов: с плюсом подходят, с минусом исключаются. Например: +знамя труда +остафьево -шишкин',
       }),
     ]) : null;
     return h('div', {}, [group, addrInput]);
@@ -2714,7 +2714,7 @@
         h('input', { type: 'radio', name: 'mode-' + option.id, checked: form.mode === 'confirm', onchange: () => update({ mode: 'confirm' }) }),
         h('span', { text: 'уточнить перед записью' }),
       ]),
-      h('p', { class: 'esh-note', text: 'О новой удобной записи придёт уведомление в приложении ЕМИАС и на электронную почту, как обычно. Если выбрано «уточнить перед записью» — на ответ 60 секунд, вопрос появится в этой вкладке.' }),
+      h('p', { class: 'esh-note', text: 'О новой удобной записи придёт уведомление в приложении ЕМИАС и на электронную почту, как обычно. Если выбрано «уточнить перед записью», вопрос появится в этой вкладке, и на ответ будет 60 секунд.' }),
     ]));
     card.appendChild(h('label', { class: 'esh-field', text: '🏁 После записи' }));
     card.appendChild(h('div', {}, [
@@ -2833,7 +2833,7 @@
   function renderStep4() {
     clear(dom.panel);
     dom.panel.appendChild(h('h3', { text: 'Готово' }));
-    dom.panel.appendChild(h('p', {}, 'Ищу — можете заниматься своими делами. Когда запишу, значок станет ✅ и придёт уведомление от ЕМИАС.'));
+    dom.panel.appendChild(h('p', {}, 'Ищу, а вы можете заниматься своими делами. Когда запишу, значок станет ✅ и придёт уведомление от ЕМИАС.'));
     const titles = (wizard.builtTargets || []).map((t) => t.title).join(', ');
     if (titles) dom.panel.appendChild(h('p', { class: 'esh-note', text: 'Ищу: ' + titles }));
     dom.panel.appendChild(h('div', { class: 'esh-btns' }, [
@@ -3051,7 +3051,7 @@
   // раздел «Полисы ОМС»).
   function initErrorBadge(e) {
     if (e && e.name === 'IdentityError') {
-      return { kind: 'needIdentity', text: '🔒 Не нашла полис и дату рождения', detail: 'откройте на сайте «Полисы ОМС» — дальше продолжу сам' };
+      return { kind: 'needIdentity', text: '🔒 Не нашла полис и дату рождения', detail: 'откройте на сайте «Полисы ОМС», дальше продолжу сам' };
     }
     return { kind: 'needLogin', text: '🔒 Войдите в ЕМИАС', detail: 'после входа продолжу сам' };
   }
@@ -3492,7 +3492,7 @@
     try {
       r = await startFromSavedConfig();
     } catch (e) {
-      setBadge({ kind: 'resumeError', text: '🔴 Не вышло проверить — нажмите ещё раз', detail: e && e.message });
+      setBadge({ kind: 'resumeError', text: '🔴 Не вышло проверить, нажмите ещё раз', detail: e && e.message });
       return;
     }
 
