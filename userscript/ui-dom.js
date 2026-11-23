@@ -318,6 +318,12 @@
       .esh-sec-head.err .esh-sec-value { color: #c0392b; }
       .esh-sec-chev { flex: none; color: #999; font-size: 11px; }
       .esh-sec-body { padding: 0 0 12px; }
+      .esh-tr-head { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 6px 8px; padding: 8px 0; font-size: 13px; }
+      .esh-toggle { display: inline-flex; flex: none; margin-left: auto; border: 1px solid #cfd6e0; border-radius: 16px; overflow: hidden; }
+      .esh-toggle button { border: none; background: #fff; padding: 5px 9px; font: inherit; font-size: 12px; cursor: pointer; color: #333; }
+      .esh-toggle button + button { border-left: 1px solid #cfd6e0; }
+      .esh-toggle button.on { background: #2e7dd7; color: #fff; }
+      .esh-note.esh-tr-note { margin: -2px 0 10px; }
       .esh-seg { display: flex; flex-wrap: wrap; gap: 6px; margin: 2px 0 8px; }
       .esh-seg-btn { border: 1px solid #cfd6e0; background: #fff; border-radius: 16px; padding: 6px 12px; font: inherit; font-size: 13px; cursor: pointer; color: #333; }
       .esh-seg-btn.on { background: #2e7dd7; border-color: #2e7dd7; color: #fff; }
@@ -685,6 +691,20 @@
     })));
   }
 
+  // Раздел из двух вариантов без своих полей — одна строка с переключателем
+  // справа: раскрывать ради одного нажатия незачем.
+  function toggleRow(label, options, value, onPick, note) {
+    return h('div', { class: 'esh-sec' }, [
+      h('div', { class: 'esh-tr-head' }, [
+        h('span', { class: 'esh-sec-label', text: label }),
+        h('div', { class: 'esh-toggle' }, options.map(([val, text]) => h('button', {
+          type: 'button', class: val === value ? 'on' : '', text, onclick: () => onPick(val),
+        }))),
+      ]),
+      note ? h('p', { class: 'esh-note esh-tr-note', text: note }) : null,
+    ]);
+  }
+
   function section(form, key, label, summary, body, update, hasError) {
     const open = form.open === key;
     const head = h('button', {
@@ -815,23 +835,21 @@
     // 💬 Цель визита
     if (option.source && option.source.needPurpose) {
       const purpose = form.purpose === 'documents' ? 'documents' : 'unwell';
-      const opts = [['unwell', ui.INQUIRY_PURPOSES.unwell.title], ['documents', ui.INQUIRY_PURPOSES.documents.title]];
-      card.appendChild(section(form, 'purpose', '💬 Цель визита', ui.INQUIRY_PURPOSES[purpose].title.toLowerCase(),
-        [segmented(opts, purpose, (v) => update({ purpose: v }))], update, false));
+      card.appendChild(toggleRow('💬 Цель визита', [['unwell', 'Самочувствие'], ['documents', 'Документы']], purpose,
+        (v) => update({ purpose: v }), purpose === 'documents' ? ui.INQUIRY_PURPOSES.documents.title : ui.INQUIRY_PURPOSES.unwell.title));
     }
 
     // ✍️ Как записывать
     const modeNote = form.mode === 'confirm'
       ? 'Вопрос появится в этой вкладке, на ответ будет 60 секунд.'
       : 'О свежей записи уведомление придёт как обычно: в самом приложении ЕМИАС и на электронную почту.';
-    card.appendChild(section(form, 'mode', '✍️ Как записывать', form.mode === 'confirm' ? 'уточнить перед записью' : 'сразу',
-      [segmented([['auto', 'Сразу, без вопросов'], ['confirm', 'Уточнить перед записью']], form.mode, (v) => update({ mode: v })),
-        h('p', { class: 'esh-note', text: modeNote })], update, false));
+    card.appendChild(toggleRow('✍️ Как записывать', [['auto', 'Сразу'], ['confirm', 'Уточнить']], form.mode,
+      (v) => update({ mode: v }), modeNote));
 
     // 🏁 После успешной записи
     const after = form.afterBooking === 'improve' ? 'improve' : 'stop';
-    card.appendChild(section(form, 'after', '🏁 После записи', after === 'improve' ? 'искать ещё раньше' : 'остановиться',
-      [segmented([['stop', 'Остановиться'], ['improve', 'Искать ещё раньше']], after, (v) => update({ afterBooking: v }))], update, false));
+    card.appendChild(toggleRow('🏁 После записи', [['stop', 'Остановиться'], ['improve', 'Ещё раньше']], after,
+      (v) => update({ afterBooking: v })));
 
     const errorEl = h('p', { class: 'esh-warn', text: error || '', hidden: !error });
     errorEl.dataset.optionId = option.id;
