@@ -2239,7 +2239,7 @@
       .esh-sub { display: block; font-size: 11px; opacity: .85; font-weight: normal; }
       .esh-card { width: 320px; max-width: calc(100vw - 32px); box-sizing: border-box; max-height: 70vh; overflow: auto; background: #fff; color: #222; border-radius: 12px; box-shadow: 0 4px 20px rgba(0,0,0,.3); padding: 14px; }
       /* На компьютере мастер шире и выше: шаг 2 с несколькими целями иначе превращается в длинную ленту. */
-      @media (min-width: 900px) { .esh-card { width: 440px; max-height: 82vh; padding: 18px; } }
+      @media (min-width: 900px) { .esh-card { width: 380px; max-height: 82vh; padding: 16px; } }
       .esh-card h3 { margin: 0 0 12px; font-size: 16px; }
       .esh-card p { margin: 4px 0; font-size: 13px; line-height: 1.4; }
       .esh-row { display: flex; align-items: center; gap: 8px; margin: 3px 0; line-height: 1.3; }
