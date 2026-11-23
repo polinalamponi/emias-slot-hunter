@@ -2337,10 +2337,12 @@
       .esh-sec-chev { flex: none; color: #999; font-size: 11px; }
       .esh-sec-body { padding: 0 0 12px; }
       .esh-tr-head { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 6px 8px; padding: 8px 0; font-size: 13px; }
-      .esh-toggle { display: inline-flex; flex: none; margin-left: auto; border: 1px solid #cfd6e0; border-radius: 16px; overflow: hidden; }
-      .esh-toggle button { border: none; background: #fff; padding: 5px 9px; font: inherit; font-size: 12px; cursor: pointer; color: #333; }
-      .esh-toggle button + button { border-left: 1px solid #cfd6e0; }
-      .esh-toggle button.on { background: #2e7dd7; color: #fff; }
+      .esh-tg { display: inline-flex; align-items: center; gap: 6px; flex: none; margin-left: auto; }
+      .esh-tg-word { border: none; background: none; padding: 2px 0; font: inherit; font-size: 13px; cursor: pointer; color: #888; }
+      .esh-tg-word.on { color: #2e7dd7; font-weight: 600; }
+      .esh-switch { position: relative; width: 36px; height: 20px; flex: none; border: none; border-radius: 10px; background: #2e7dd7; cursor: pointer; padding: 0; }
+      .esh-switch::after { content: ''; position: absolute; top: 2px; left: 2px; width: 16px; height: 16px; border-radius: 50%; background: #fff; box-shadow: 0 1px 2px rgba(0,0,0,.3); transition: left .15s; }
+      .esh-switch.right::after { left: 18px; }
       .esh-note.esh-tr-note { margin: -2px 0 10px; }
       .esh-seg { display: flex; flex-wrap: wrap; gap: 6px; margin: 2px 0 8px; }
       .esh-seg-btn { border: 1px solid #cfd6e0; background: #fff; border-radius: 16px; padding: 6px 12px; font: inherit; font-size: 13px; cursor: pointer; color: #333; }
@@ -2710,14 +2712,20 @@
   }
 
   // Раздел из двух вариантов без своих полей — одна строка с переключателем
-  // справа: раскрывать ради одного нажатия незачем.
+  // «вариант ◯━ вариант» справа: раскрывать ради одного нажатия незачем.
+  // Нажать можно на сам переключатель или на любое из слов.
   function toggleRow(label, options, value, onPick, note) {
+    const [[leftVal, leftText], [rightVal, rightText]] = options;
+    const right = value === rightVal;
+    const word = (val, text, on) => h('button', { type: 'button', class: 'esh-tg-word' + (on ? ' on' : ''), text, onclick: () => onPick(val) });
+    const knob = h('button', {
+      type: 'button', class: 'esh-switch' + (right ? ' right' : ''), role: 'switch', 'aria-checked': right ? 'true' : 'false',
+      'aria-label': label + ': ' + (right ? rightText : leftText), onclick: () => onPick(right ? leftVal : rightVal),
+    });
     return h('div', { class: 'esh-sec' }, [
       h('div', { class: 'esh-tr-head' }, [
         h('span', { class: 'esh-sec-label', text: label }),
-        h('div', { class: 'esh-toggle' }, options.map(([val, text]) => h('button', {
-          type: 'button', class: val === value ? 'on' : '', text, onclick: () => onPick(val),
-        }))),
+        h('div', { class: 'esh-tg' }, [word(leftVal, leftText, !right), knob, word(rightVal, rightText, right)]),
       ]),
       note ? h('p', { class: 'esh-note esh-tr-note', text: note }) : null,
     ]);
