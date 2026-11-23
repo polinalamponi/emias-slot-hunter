@@ -1872,7 +1872,7 @@
       }
       if (t.purpose) parts.push(`цель визита: ${purposeTitle(t.purpose)}`);
       parts.push(t.mode === 'confirm' ? 'уточняю перед записью' : 'записываю сразу');
-      parts.push(t.keepImproving ? 'после записи ищу раньше и переношу' : 'после записи останавливаюсь');
+      parts.push(t.keepImproving ? 'после записи ищу ещё раньше' : 'после записи останавливаюсь');
 
       // bookDoctor и bookLdp — запись по направлению без текущей записи, для неё
       // отдельная формулировка «Запишу к <специальность> / на <исследование> по
@@ -2718,7 +2718,7 @@
       ]),
       h('p', { class: 'esh-note esh-under', text: 'Вопрос появится в этой вкладке, на ответ будет 60 секунд.' }),
     ]));
-    card.appendChild(h('label', { class: 'esh-field', text: '🏁 После записи' }));
+    card.appendChild(h('label', { class: 'esh-field', text: '🏁 После успешной записи' }));
     card.appendChild(h('div', {}, [
       h('label', { class: 'esh-row' }, [
         h('input', { type: 'radio', name: 'after-' + option.id, checked: form.afterBooking !== 'improve', onchange: () => update({ afterBooking: 'stop' }) }),
@@ -2726,7 +2726,7 @@
       ]),
       h('label', { class: 'esh-row' }, [
         h('input', { type: 'radio', name: 'after-' + option.id, checked: form.afterBooking === 'improve', onchange: () => update({ afterBooking: 'improve' }) }),
-        h('span', { text: 'искать раньше и переносить' }),
+        h('span', { text: 'искать ещё раньше' }),
       ]),
     ]));
     const error = stepTwoError(option, form);

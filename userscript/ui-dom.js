@@ -752,7 +752,7 @@
       ]),
       h('p', { class: 'esh-note esh-under', text: 'Вопрос появится в этой вкладке, на ответ будет 60 секунд.' }),
     ]));
-    card.appendChild(h('label', { class: 'esh-field', text: '🏁 После записи' }));
+    card.appendChild(h('label', { class: 'esh-field', text: '🏁 После успешной записи' }));
     card.appendChild(h('div', {}, [
       h('label', { class: 'esh-row' }, [
         h('input', { type: 'radio', name: 'after-' + option.id, checked: form.afterBooking !== 'improve', onchange: () => update({ afterBooking: 'stop' }) }),
@@ -760,7 +760,7 @@
       ]),
       h('label', { class: 'esh-row' }, [
         h('input', { type: 'radio', name: 'after-' + option.id, checked: form.afterBooking === 'improve', onchange: () => update({ afterBooking: 'improve' }) }),
-        h('span', { text: 'искать раньше и переносить' }),
+        h('span', { text: 'искать ещё раньше' }),
       ]),
     ]));
     const error = stepTwoError(option, form);
