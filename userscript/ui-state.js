@@ -124,7 +124,7 @@
         parts.push(preferText);
       }
       if (t.purpose) parts.push(`цель визита: ${purposeTitle(t.purpose)}`);
-      parts.push(t.mode === 'confirm' ? 'спрашиваю перед записью' : 'записываю сразу');
+      parts.push(t.mode === 'confirm' ? 'уточняю перед записью' : 'записываю сразу');
       parts.push(t.keepImproving ? 'после записи ищу раньше и переношу' : 'после записи останавливаюсь');
 
       // bookDoctor и bookLdp — запись по направлению без текущей записи, для неё

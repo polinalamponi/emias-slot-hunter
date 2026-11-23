@@ -746,9 +746,9 @@
       ]),
       h('label', { class: 'esh-row' }, [
         h('input', { type: 'radio', name: 'mode-' + option.id, checked: form.mode === 'confirm', onchange: () => update({ mode: 'confirm' }) }),
-        h('span', { text: 'сначала спрашивать' }),
+        h('span', { text: 'уточнить перед записью' }),
       ]),
-      h('p', { class: 'esh-note', text: 'О новой удобной записи придёт уведомление в приложении ЕМИАС и на электронную почту, как обычно. Если спрашивать — на ответ 60 секунд, вопрос появится в этой вкладке.' }),
+      h('p', { class: 'esh-note', text: 'О новой удобной записи придёт уведомление в приложении ЕМИАС и на электронную почту, как обычно. Если выбрано «уточнить перед записью» — на ответ 60 секунд, вопрос появится в этой вкладке.' }),
     ]));
     card.appendChild(h('label', { class: 'esh-field', text: '🏁 После записи' }));
     card.appendChild(h('div', {}, [
@@ -850,7 +850,7 @@
   function renderStep3(report) {
     clear(dom.panel);
     dom.panel.appendChild(h('h3', { text: 'Шаг 3 из 3. Проверка' }));
-    dom.panel.appendChild(h('p', { class: 'esh-note', text: 'Холостой прогон: что охотник сделал бы прямо сейчас. Ничего не записано.' }));
+    dom.panel.appendChild(h('p', { class: 'esh-note', text: 'Холостой прогон: что охотник сделал бы прямо сейчас. Пока никуда не записывал.' }));
     dom.panel.appendChild(h('div', {}, report.items.map(renderReportItem)));
     const checkbox = h('input', {
       type: 'checkbox', checked: wizard.checked,
