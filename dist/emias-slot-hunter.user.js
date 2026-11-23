@@ -2336,14 +2336,12 @@
       .esh-sec-head.err .esh-sec-value { color: #c0392b; }
       .esh-sec-chev { flex: none; color: #999; font-size: 11px; }
       .esh-sec-body { padding: 0 0 12px; }
-      .esh-tr-head { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 6px 8px; padding: 8px 0; font-size: 13px; }
-      .esh-tg { display: inline-flex; align-items: center; gap: 6px; flex: none; margin-left: auto; }
-      .esh-tg-word { border: none; background: none; padding: 2px 0; font: inherit; font-size: 13px; cursor: pointer; color: #888; }
-      .esh-tg-word.on { color: #2e7dd7; font-weight: 600; }
-      .esh-switch { position: relative; width: 36px; height: 20px; flex: none; border: none; border-radius: 10px; background: #2e7dd7; cursor: pointer; padding: 0; }
-      .esh-switch::after { content: ''; position: absolute; top: 2px; left: 2px; width: 16px; height: 16px; border-radius: 50%; background: #fff; box-shadow: 0 1px 2px rgba(0,0,0,.3); transition: left .15s; }
-      .esh-switch.right::after { left: 18px; }
-      .esh-note.esh-tr-note { margin: -2px 0 10px; }
+      .esh-tr { padding: 10px 0 4px; }
+      .esh-tr-label { display: block; font-size: 13px; margin-bottom: 8px; }
+      .esh-modes { display: flex; gap: 8px; }
+      .esh-mode { flex: 1 1 0; min-width: 0; border: 1px solid #cfd6e0; background: #fff; border-radius: 8px; padding: 8px 6px; font: inherit; font-size: 13px; cursor: pointer; color: #333; }
+      .esh-mode.on { background: #2e7dd7; border-color: #2e7dd7; color: #fff; font-weight: 600; }
+      .esh-note.esh-tr-note { margin: 8px 0 6px; }
       .esh-seg { display: flex; flex-wrap: wrap; gap: 6px; margin: 2px 0 8px; }
       .esh-seg-btn { border: 1px solid #cfd6e0; background: #fff; border-radius: 16px; padding: 6px 12px; font: inherit; font-size: 13px; cursor: pointer; color: #333; }
       .esh-seg-btn.on { background: #2e7dd7; border-color: #2e7dd7; color: #fff; }
@@ -2711,22 +2709,15 @@
     })));
   }
 
-  // Раздел из двух вариантов без своих полей — одна строка с переключателем
-  // «вариант ◯━ вариант» справа: раскрывать ради одного нажатия незачем.
-  // Нажать можно на сам переключатель или на любое из слов.
+  // Раздел из двух вариантов без своих полей — без раскрытия: под названием
+  // две кнопки одинаковой ширины, выбранная залита. Так сразу видно, что это
+  // выбор из двух режимов, и переключается одним нажатием.
   function toggleRow(label, options, value, onPick, note) {
-    const [[leftVal, leftText], [rightVal, rightText]] = options;
-    const right = value === rightVal;
-    const word = (val, text, on) => h('button', { type: 'button', class: 'esh-tg-word' + (on ? ' on' : ''), text, onclick: () => onPick(val) });
-    const knob = h('button', {
-      type: 'button', class: 'esh-switch' + (right ? ' right' : ''), role: 'switch', 'aria-checked': right ? 'true' : 'false',
-      'aria-label': label + ': ' + (right ? rightText : leftText), onclick: () => onPick(right ? leftVal : rightVal),
-    });
-    return h('div', { class: 'esh-sec' }, [
-      h('div', { class: 'esh-tr-head' }, [
-        h('span', { class: 'esh-sec-label', text: label }),
-        h('div', { class: 'esh-tg' }, [word(leftVal, leftText, !right), knob, word(rightVal, rightText, right)]),
-      ]),
+    return h('div', { class: 'esh-sec esh-tr' }, [
+      h('div', { class: 'esh-sec-label esh-tr-label', text: label }),
+      h('div', { class: 'esh-modes' }, options.map(([val, text]) => h('button', {
+        type: 'button', class: 'esh-mode' + (val === value ? ' on' : ''), text, onclick: () => onPick(val),
+      }))),
       note ? h('p', { class: 'esh-note esh-tr-note', text: note }) : null,
     ]);
   }
@@ -2861,20 +2852,20 @@
     // 💬 Цель визита
     if (option.source && option.source.needPurpose) {
       const purpose = form.purpose === 'documents' ? 'documents' : 'unwell';
-      card.appendChild(toggleRow('💬 Цель визита', [['unwell', 'Самочувствие'], ['documents', 'Документы']], purpose,
-        (v) => update({ purpose: v }), purpose === 'documents' ? ui.INQUIRY_PURPOSES.documents.title : ui.INQUIRY_PURPOSES.unwell.title));
+      card.appendChild(toggleRow('💬 Цель визита', [['unwell', 'Плохое самочувствие'], ['documents', 'Документы']], purpose,
+        (v) => update({ purpose: v })));
     }
 
     // ✍️ Как записывать
     const modeNote = form.mode === 'confirm'
       ? 'Вопрос появится в этой вкладке, на ответ будет 60 секунд.'
       : 'О свежей записи уведомление придёт как обычно: в самом приложении ЕМИАС и на электронную почту.';
-    card.appendChild(toggleRow('✍️ Как записывать', [['auto', 'Сразу'], ['confirm', 'Уточнить']], form.mode,
+    card.appendChild(toggleRow('✍️ Как записывать', [['auto', 'Записать сразу'], ['confirm', 'Сначала уточнить']], form.mode,
       (v) => update({ mode: v }), modeNote));
 
     // 🏁 После успешной записи
     const after = form.afterBooking === 'improve' ? 'improve' : 'stop';
-    card.appendChild(toggleRow('🏁 После записи', [['stop', 'Остановиться'], ['improve', 'Ещё раньше']], after,
+    card.appendChild(toggleRow('🏁 После записи', [['stop', 'Остановиться'], ['improve', 'Искать ещё раньше']], after,
       (v) => update({ afterBooking: v })));
 
     const errorEl = h('p', { class: 'esh-warn', text: error || '', hidden: !error });
