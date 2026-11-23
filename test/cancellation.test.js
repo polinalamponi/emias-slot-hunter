@@ -209,7 +209,7 @@ async function mountUi(env, extra = {}) {
     setTimeout: setTimer, setInterval: setTimer, clearTimeout: (id) => timers.delete(id), clearInterval: (id) => timers.delete(id),
   });
   await new Promise(setImmediate);
-  assert.equal(core.status().running, true, 'интерфейс возобновил поиск из настроек');
+  if (extra.expectRunning !== false) assert.equal(core.status().running, true, 'интерфейс возобновил поиск из настроек');
   const root = body.children[0].shadowRoot;
   const button = (text) => {
     const found = root.querySelectorAll('button').find((node) => node.textContent.includes(text));
@@ -340,4 +340,30 @@ test('интерфейс: после записи предлагает угос�
   const later = card.querySelectorAll('button').find((b) => b.textContent === 'Не сейчас');
   later.click();
   assert.equal(ui.root.querySelectorAll('.esh-thanks').length, 0, '«Не сейчас» убирает карточку');
+});
+
+// ЕМИАС впускает без перезагрузки страницы: значок «Войдите в ЕМИАС» должен
+// сам заметить вход (по хранилищу сайта, без запросов) и продолжить поиск.
+test('интерфейс: после входа на сайте значок «Войдите в ЕМИАС» меняется сам', async () => {
+  const env = await environment({ mode: 'auto', scenario: 'bookLab' });
+  const realAuth = env.storage.getItem('persist:sessionAuth');
+  env.storage.setItem('persist:sessionAuth', JSON.stringify({ accessToken: 'null', refreshToken: 'null', idToken: 'null', ctime: 'null' }));
+  const ui = await mountUi(env, { expectRunning: false });
+  const badge = () => ui.root.querySelector('.esh-badge').textContent;
+  assert.match(badge(), /Войдите в ЕМИАС/);
+  const watcher = () => [...ui.timers.values()].find((t) => t.ms === 3000);
+  assert.ok(watcher(), 'пока нет входа, раз в 3 секунды смотрим в хранилище');
+
+  const callsBefore = env.calls.length;
+  watcher().fn();
+  await new Promise(setImmediate);
+  assert.match(badge(), /Войдите в ЕМИАС/, 'вход не появился — значок прежний');
+  assert.equal(env.calls.length, callsBefore, 'пока хранилище не менялось, в ЕМИАС не ходим');
+
+  env.storage.setItem('persist:sessionAuth', realAuth);
+  watcher().fn();
+  for (let i = 0; i < 5; i++) await new Promise(setImmediate);
+  assert.doesNotMatch(badge(), /Войдите в ЕМИАС/, 'после входа значок сменился сам');
+  assert.equal(ui.core.status().running, true, 'поиск из настроек продолжился');
+  assert.ok(!watcher(), 'после входа больше не смотрим');
 });

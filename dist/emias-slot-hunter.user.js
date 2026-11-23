@@ -2294,6 +2294,7 @@
     badgeState = { ...badgeState, ...next };
     renderBadge(badgeState);
     syncWakeLock();
+    syncLoginWatch();
   }
 
   function renderBadge(status) {
@@ -3048,6 +3049,46 @@
   // Если в настройках поиск включён и не на паузе, после входа просто
   // возобновляем его (как при загрузке страницы), а не открываем мастер —
   // иначе открытие мастера поставило бы на паузу поиск и в других вкладках.
+  /* ==================== ждём входа на сайте ==================== */
+  // ЕМИАС впускает без перезагрузки страницы, поэтому значок «Войдите в
+  // ЕМИАС» сам не узнавал о входе — только по клику. Пока горит такой значок,
+  // раз в 3 секунды смотрим в хранилище сайта (без запросов в ЕМИАС): как
+  // только данные входа изменились, тихо пробуем ещё раз. Мастер при этом сам
+  // не открываем — значок просто становится «🎯 Настроить» или поиск
+  // продолжается, если был включён.
+  const LOGIN_WATCH_MS = 3000;
+  const loginWatch = { id: null, snapshot: null, busy: false };
+
+  function loginSnapshot() {
+    try { return String(storage.getItem('persist:sessionAuth')) + '|' + String(storage.getItem('persist:persist')); } catch (e) { return ''; }
+  }
+
+  function syncLoginWatch() {
+    const waiting = badgeState.kind === 'needLogin' || badgeState.kind === 'needIdentity';
+    if (!waiting) {
+      if (loginWatch.id) { clearInterval(loginWatch.id); loginWatch.id = null; }
+      return;
+    }
+    if (loginWatch.id) return;
+    loginWatch.snapshot = loginSnapshot();
+    loginWatch.id = setInterval(() => {
+      if (loginWatch.busy) return;
+      const now = loginSnapshot();
+      if (now === loginWatch.snapshot) return;
+      loginWatch.snapshot = now;
+      loginWatch.busy = true;
+      core.init().then(() => {
+        const cfg = ui.loadConfig(storage);
+        if (cfg && cfg.enabled && !cfg.paused && Array.isArray(cfg.targets) && cfg.targets.length) return resumeIfEnabled();
+        setBadge({ kind: 'idle', text: '🎯 Настроить', detail: '' });
+        return null;
+      }).catch((e) => {
+        const next = initErrorBadge(e);
+        if (next.kind !== badgeState.kind || next.detail !== badgeState.detail) setBadge(next);
+      }).finally(() => { loginWatch.busy = false; });
+    }, LOGIN_WATCH_MS);
+  }
+
   function retryLogin() {
     core.init().then(() => {
       const cfg = ui.loadConfig(storage);
