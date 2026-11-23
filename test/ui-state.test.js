@@ -275,3 +275,21 @@ test('врач по фамилии: только если выбран пунк�
   assert.equal(t.doctorContains, 'Иванова');
   assert.match(ui.describeTarget(t), /врач: Иванова/);
 });
+
+test('теги адреса и врача → фильтр ядра и человеческое описание', () => {
+  const { addressMatches } = require('../core/filters.js');
+  const f = ui.normalizeForm({ when: 'earlier', where: 'list', addrAny: ['Знамя труда', 'Остафьево'], addrNone: ['Шишкин лес'], addrAnyDraft: '', addrNoneDraft: '' });
+  assert.equal(f.where, 'contains');
+  assert.equal(addressMatches('посёлок Знамя труда, д. 1', f.addressContains), true);
+  assert.equal(addressMatches('село Остафьево, д. 3', f.addressContains), true);
+  assert.equal(addressMatches('Шишкин лес, Знамя труда', f.addressContains), false, '«кроме» сильнее «подходят»');
+  assert.equal(addressMatches('улица Ленина, д. 5', f.addressContains), false);
+  const t = ui.buildTarget({ ...option, current: null }, { ...f, mode: 'auto' });
+  assert.match(ui.describeTarget(t), /адрес: Знамя труда или Остафьево, кроме Шишкин лес/);
+  // набранный, но не добавленный тег тоже учитывается; «+»/«-»/«;» из текста не становятся синтаксисом
+  const g = ui.normalizeForm({ when: 'earlier', where: 'list', addrAny: [], addrNone: [], addrAnyDraft: '-Тестовая; д. 2', addrNoneDraft: '' });
+  assert.equal(addressMatches('улица Тестовая д. 2', g.addressContains), true);
+  const d = ui.normalizeForm({ when: 'earlier', doctor: 'byName', docAny: ['Иванова'], docNone: [] });
+  assert.equal(addressMatches('Иванова А.П.', d.doctorContains), true);
+  assert.equal(addressMatches('Петрова Б.В.', d.doctorContains), false);
+});

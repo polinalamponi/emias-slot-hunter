@@ -118,8 +118,8 @@
       else if (t.timeFrom && t.timeTo) parts.push(`время с ${t.timeFrom} до ${t.timeTo}`);
       else if (t.timeFrom) parts.push(`время после ${t.timeFrom}`);
       else if (t.timeTo) parts.push(`время до ${t.timeTo}`);
-      if (t.addressContains) parts.push(`адрес: ${t.addressContains}`);
-      if (t.doctorContains) parts.push(`врач: ${t.doctorContains}`);
+      if (t.addressContains) parts.push(`адрес: ${humanFilter(t.addressContains)}`);
+      if (t.doctorContains) parts.push(`врач: ${humanFilter(t.doctorContains)}`);
       if (t.prefer) {
         let preferText = `сначала предпочитаю до ${dayHuman(t.prefer.until)}`;
         if (t.prefer.timeTo) preferText += `, до ${t.prefer.timeTo}`;
@@ -196,8 +196,45 @@
     // от друга: можно только даты, только время или и то и другое. Одна и та
     // же дата в «с» и «по» — один день. У других пунктов поля скрыты и не
     // применяются, даже если человек успел их заполнить.
+    // Тег из поля «подходят»/«кроме»: без «;», кавычек и ведущих «+»/«-»,
+    // чтобы текст человека не превратился в синтаксис фильтра.
+    function cleanTag(text) {
+      return String(text || '').replace(/[;"]/g, ' ').replace(/^[\s+-]+/, '').replace(/\s+/g, ' ').trim();
+    }
+
+    // Теги → строка фильтра ядра (core/filters.js parseAddressFilter): каждый
+    // вариант в кавычках, через «;», с «+» для «подходят» и «-» для «кроме».
+    function tagsToFilter(any, none, anyDraft, noneDraft) {
+      const plus = [...(any || []), cleanTag(anyDraft)].map(cleanTag).filter(Boolean);
+      const minus = [...(none || []), cleanTag(noneDraft)].map(cleanTag).filter(Boolean);
+      return [...plus.map((x) => `+"${x}"`), ...minus.map((x) => `-"${x}"`)].join(';');
+    }
+
+    // Строка фильтра → человеческий текст для описания условий:
+    // «Знамя труда или Остафьево, кроме Шишкин лес». Старые строки без
+    // кавычек (свободный текст, «в этом же здании») показываем как есть.
+    function humanFilter(s) {
+      const str = String(s || '');
+      if (!str.includes('"')) return str;
+      const any = [];
+      const none = [];
+      for (const part of str.split(';')) {
+        const m = part.trim().match(/^([+-]?)"(.*)"$/);
+        if (!m) continue;
+        (m[1] === '-' ? none : any).push(m[2]);
+      }
+      return [any.join(' или '), none.length ? 'кроме ' + none.join(', ') : ''].filter(Boolean).join(', ');
+    }
+
     function normalizeForm(form) {
       const f = { ...(form || {}) };
+      if (f.where === 'list') {
+        f.where = 'contains';
+        f.addressContains = tagsToFilter(f.addrAny, f.addrNone, f.addrAnyDraft, f.addrNoneDraft);
+      }
+      if (f.doctor === 'byName' && (f.docAny || f.docNone || f.docAnyDraft || f.docNoneDraft)) {
+        f.doctorContains = tagsToFilter(f.docAny, f.docNone, f.docAnyDraft, f.docNoneDraft);
+      }
       if (f.doctor !== 'byName') f.doctorContains = '';
       if (f.when === 'range') {
         if (f.dateFrom && f.dateFrom === f.dateTo) { f.when = 'onlyDay'; f.day = f.dateFrom; f.dateFrom = ''; f.dateTo = ''; }
@@ -208,7 +245,7 @@
     }
 
     return {
-      normalizeForm,
+      normalizeForm, cleanTag, tagsToFilter, humanFilter,
       buildTarget, describeTarget, describeDryRunItem, saveConfig, loadConfig, applyBookedUpdate, human, stripCampus, KEY,
       INQUIRY_PURPOSES, shouldShowThanks,
     };

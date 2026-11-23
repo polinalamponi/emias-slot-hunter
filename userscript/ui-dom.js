@@ -311,6 +311,24 @@
       .esh-log { font-size: 12px; max-height: 160px; overflow: auto; background: #fafafa; border: 1px solid #eee; border-radius: 6px; padding: 6px; }
       .esh-log div { margin-bottom: 4px; }
       .esh-range { display: flex; align-items: center; gap: 6px; margin: 6px 0; font-size: 13px; }
+      .esh-sec { border-top: 1px solid #eee; }
+      .esh-sec-head { display: flex; width: 100%; align-items: center; gap: 8px; background: none; border: none; padding: 11px 0; cursor: pointer; text-align: left; font: inherit; font-size: 13px; color: #222; }
+      .esh-sec-label { font-weight: 600; flex: none; }
+      .esh-sec-value { flex: 1; min-width: 0; color: #555; text-align: right; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+      .esh-sec-head.err .esh-sec-value { color: #c0392b; }
+      .esh-sec-chev { flex: none; color: #999; font-size: 11px; }
+      .esh-sec-body { padding: 0 0 12px; }
+      .esh-seg { display: flex; flex-wrap: wrap; gap: 6px; margin: 2px 0 8px; }
+      .esh-seg-btn { border: 1px solid #cfd6e0; background: #fff; border-radius: 16px; padding: 6px 12px; font: inherit; font-size: 13px; cursor: pointer; color: #333; }
+      .esh-seg-btn.on { background: #2e7dd7; border-color: #2e7dd7; color: #fff; }
+      .esh-sublabel { font-size: 12px; color: #555; margin: 8px 0 4px; }
+      .esh-tags { display: flex; flex-wrap: wrap; gap: 6px; margin: 0 0 6px; }
+      .esh-tag { display: inline-flex; align-items: center; gap: 2px; background: #eaf2fc; border-radius: 12px; padding: 3px 2px 3px 10px; font-size: 13px; }
+      .esh-tag.none { background: #fbecec; }
+      .esh-tag-x { border: none; background: none; cursor: pointer; font-size: 15px; line-height: 1; color: #777; padding: 0 6px; }
+      .esh-tag-add { display: flex; gap: 6px; align-items: center; }
+      .esh-card .esh-tag-add input[type=text] { flex: 1; min-width: 0; margin-top: 0; }
+      .esh-btn.small { flex: none; padding: 5px 10px; font-size: 12px; }
       .esh-range > span { flex: none; color: #444; }
       .esh-card .esh-range input[type=date], .esh-card .esh-range input[type=time] { flex: 1; min-width: 0; margin-top: 0; }
     `;
@@ -647,6 +665,7 @@
         day: '', dateFrom: '', dateTo: '', timeFrom: '', timeTo: '',
         where: option.address ? 'sameCampus' : 'any', addressContains: '',
         respectTravel: true, mode: 'auto', purpose: 'unwell', afterBooking: 'stop',
+        addrAny: [], addrNone: [], doctor: 'any', docAny: [], docNone: [], open: null,
       };
     }
     return wizard.forms[option.id];
@@ -655,51 +674,51 @@
   // Направление к врачу с needPurpose: true — сайт требует выбрать цель визита
   // (см. capture-2026-09-24-referral-doctor.md), иначе расписание и запись
   // отклоняются. Для остальных целей поле form.purpose ни на что не влияет.
-  function purposeField(option, form, update) {
-    if (!(option.source && option.source.needPurpose)) return null;
-    const opts = [
-      ['unwell', ui.INQUIRY_PURPOSES.unwell.title],
-      ['documents', ui.INQUIRY_PURPOSES.documents.title],
-    ];
-    const group = h('div', {}, opts.map(([val, text]) => h('label', { class: 'esh-row' }, [
-      h('input', { type: 'radio', name: 'purpose-' + option.id, checked: (form.purpose || 'unwell') === val, onchange: () => update({ purpose: val }) }),
-      h('span', { text }),
-    ])));
-    return h('div', {}, [h('label', { class: 'esh-field', text: '💬 Цель визита' }), group]);
+  /* ---- шаг 2: аккордеон разделов, кнопки-переключатели и теги ----
+     Раньше все условия были раскрыты сразу и кружочками, шаг 2 вытягивался
+     в длинную ленту. Теперь каждый раздел — строка «что · текущий выбор»,
+     по нажатию раскрывается (открыт один раздел на карточку). Выбор — кнопки
+     в ряд, адреса и фамилии — теги «подходят» и «кроме» вместо «+»/«-». */
+  function segmented(options, value, onPick) {
+    return h('div', { class: 'esh-seg' }, options.map(([val, text]) => h('button', {
+      type: 'button', class: 'esh-seg-btn' + (val === value ? ' on' : ''), text, onclick: () => onPick(val),
+    })));
   }
 
-  function whenField(option, form, update, quiet) {
-    const opts = [
-      ['earlier', option.current ? 'раньше, чем сейчас записано' : 'как можно раньше'],
-      ...(option.current ? [['sameDayEarlier', 'в тот же день, но раньше']] : []),
-      ['range', 'выбрать диапазон'],
-    ];
-    // Даты и время раньше прятались в свёрнутый блок «Дополнительно» внизу —
-    // их не замечали. Теперь они под пунктом «выбрать диапазон» (как поле
-    // адреса под «адрес содержит») и не зависят друг от друга: можно только
-    // даты, только время («в любой день, но после 18:00») или оба
-    // (см. ui.normalizeForm).
-    const input = (type, key) => h('input', { type, value: form[key], onchange: (e) => quiet({ [key]: e.target.value }) });
-    const range = (label, from, to, toWord) => h('div', { class: 'esh-range' }, [
-      h('span', { text: label }), from, h('span', { text: toWord }), to,
+  function section(form, key, label, summary, body, update, hasError) {
+    const open = form.open === key;
+    const head = h('button', {
+      type: 'button', class: 'esh-sec-head' + (open ? ' open' : '') + (hasError ? ' err' : ''),
+      onclick: () => update({ open: open ? null : key }),
+    }, [
+      h('span', { class: 'esh-sec-label', text: label }),
+      h('span', { class: 'esh-sec-value', text: summary }),
+      h('span', { class: 'esh-sec-chev', text: open ? '▴' : '▾' }),
     ]);
-    const rows = [];
-    for (const [val, text] of opts) {
-      rows.push(h('label', { class: 'esh-row' }, [
-        h('input', { type: 'radio', name: 'when-' + option.id, checked: form.when === val, onchange: () => update({ when: val }) }),
-        h('span', { text }),
-      ]));
-    }
-    if (form.when === 'range') {
-      rows.push(range('даты с', input('date', 'dateFrom'), input('date', 'dateTo'), 'по'));
-      rows.push(range('время с', input('time', 'timeFrom'), input('time', 'timeTo'), 'до'));
-      rows.push(h('p', { class: 'esh-note', text: [
-        'Можно указать только даты, только время или и то и другое. Для одного дня поставьте одну и ту же дату в оба поля.',
-        '«С 18:00 до 9:00» значит до или после работы.',
-        ...(option.current ? ['С датами перенесу в эти дни, даже если они позже текущей записи.'] : []),
-      ].join(' ') }));
-    }
-    return h('div', {}, rows);
+    return h('div', { class: 'esh-sec' }, [head, open ? h('div', { class: 'esh-sec-body' }, body) : null]);
+  }
+
+  // Теги: «Добавить» или Enter добавляет вариант, × убирает. Набранный, но не
+  // добавленный текст тоже учитывается (draftKey) — иначе человек ввёл адрес,
+  // нажал «Далее», а фильтр пустой.
+  function tagsField(label, form, key, draftKey, kind, placeholder, update, quiet) {
+    const items = form[key] || [];
+    const input = h('input', { type: 'text', value: form[draftKey] || '', placeholder,
+      oninput: (e) => quiet({ [draftKey]: e.target.value }) });
+    const add = () => {
+      const v = ui.cleanTag(input.value);
+      if (!v) return;
+      update({ [key]: [...items, v], [draftKey]: '' });
+    };
+    input.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); add(); } });
+    return h('div', {}, [
+      h('div', { class: 'esh-sublabel', text: label }),
+      items.length ? h('div', { class: 'esh-tags' }, items.map((it, i) => h('span', { class: 'esh-tag' + (kind === 'none' ? ' none' : '') }, [
+        h('span', { text: it }),
+        h('button', { type: 'button', class: 'esh-tag-x', text: '×', onclick: () => update({ [key]: items.filter((_, j) => j !== i) }) }),
+      ]))) : null,
+      h('div', { class: 'esh-tag-add' }, [input, h('button', { type: 'button', class: 'esh-btn small', text: 'Добавить', onclick: add })]),
+    ]);
   }
 
   // Фильтр по фамилии врача — только там, где врача можно выбирать: запись
@@ -710,88 +729,110 @@
       || (option.scenario === 'bookDoctor' && !(option.source && option.source.availableResourceId));
   }
 
-  function doctorField(option, form, update, quiet) {
-    const opts = [['any', 'любой'], ['byName', 'фамилия:']];
-    const group = h('div', {}, opts.map(([val, text]) => h('label', { class: 'esh-row' }, [
-      h('input', { type: 'radio', name: 'doctor-' + option.id, checked: (form.doctor || 'any') === val, onchange: () => update({ doctor: val }) }),
-      h('span', { text }),
-    ])));
-    const input = form.doctor === 'byName' ? h('div', {}, [
-      h('input', { type: 'text', value: form.doctorContains || '', placeholder: 'например: Иванова или +иванова +петров',
-        oninput: (e) => quiet({ doctorContains: e.target.value }) }),
-      h('p', { class: 'esh-note', text: 'Если у врача сейчас нет свободных окошек, охотник подождёт, пока они появятся.' }),
-    ]) : null;
-    return h('div', {}, [group, input]);
+  const dm = (iso) => (iso ? iso.slice(8, 10) + '.' + iso.slice(5, 7) : '');
+  function whenSummary(option, form) {
+    if (form.when === 'sameDayEarlier') return 'в тот же день, но раньше';
+    if (form.when !== 'range') return option.current ? 'раньше, чем сейчас' : 'как можно раньше';
+    const parts = [];
+    const { dateFrom: a, dateTo: b, timeFrom: x, timeTo: y } = form;
+    if (a && b) parts.push(a === b ? dm(a) : `${dm(a)}–${dm(b)}`);
+    else if (a) parts.push('с ' + dm(a));
+    else if (b) parts.push('по ' + dm(b));
+    if (x && y) parts.push(x > y ? `после ${x} или до ${y}` : `${x}–${y}`);
+    else if (x) parts.push('после ' + x);
+    else if (y) parts.push('до ' + y);
+    return parts.join(', ') || 'выберите даты или время';
   }
 
-  function whereField(option, form, update, quiet) {
-    const opts = [
-      ...(option.address ? [['sameCampus', 'в этом же здании']] : []),
-      ['any', 'где угодно'],
-      ['contains', 'адрес содержит:'],
-    ];
-    const group = h('div', {}, opts.map(([val, text]) => h('label', { class: 'esh-row' }, [
-      h('input', { type: 'radio', name: 'where-' + option.id, checked: form.where === val, onchange: () => update({ where: val }) }),
-      h('span', { text }),
-    ])));
-    const addrInput = form.where === 'contains' ? h('div', {}, [
-      h('input', {
-        type: 'text', value: form.addressContains, placeholder: 'например: Ленина или +знамя труда -шишкин',
-        oninput: (e) => quiet({ addressContains: e.target.value }),
-      }),
-      h('p', {
-        class: 'esh-note',
-        text: 'Можно несколько вариантов: с плюсом подходят, с минусом исключаются. Например: +знамя труда +остафьево -шишкин',
-      }),
-    ]) : null;
-    return h('div', {}, [group, addrInput]);
+  function listSummary(any, none, emptyText) {
+    const a = (any || []).join(', ');
+    const n = (none || []).length ? 'кроме ' + none.join(', ') : '';
+    return [a, n].filter(Boolean).join(' · ') || emptyText;
   }
 
   function renderTargetCard(option) {
     const form = ensureForm(option);
     const update = (patch) => { Object.assign(form, patch); renderStep2(wizard.selected); };
-    // Поля ввода (даты, время, адрес) меняют форму без перерисовки шага.
+    // Поля ввода (даты, время, текст) меняют форму без перерисовки шага.
     // Браузер шлёт change у поля даты уже на первой цифре года («0002»), и
     // перерисовка подставляла этот год в новое поле и уводила курсор, так что
     // год с клавиатуры было не набрать. Обновляем только ошибку и «Далее».
     const quiet = (patch) => { Object.assign(form, patch); refreshStepTwoState(); };
+    const error = stepTwoError(option, form);
     const card = h('div', { class: 'esh-opt' });
     card.appendChild(h('div', { class: 'title', text: option.title }));
-    card.appendChild(h('label', { class: 'esh-field', text: '📅 Когда' }));
-    card.appendChild(whenField(option, form, update, quiet));
-    card.appendChild(h('label', { class: 'esh-field', text: '📍 Где' }));
-    card.appendChild(whereField(option, form, update, quiet));
-    if (doctorChoice(option)) {
-      card.appendChild(h('label', { class: 'esh-field', text: '🩺 Врач' }));
-      card.appendChild(doctorField(option, form, update, quiet));
+
+    // 📅 Когда
+    const whenOpts = [
+      ['earlier', option.current ? 'Раньше, чем сейчас' : 'Как можно раньше'],
+      ...(option.current ? [['sameDayEarlier', 'В тот же день, но раньше']] : []),
+      ['range', 'Выбрать даты и время'],
+    ];
+    const input = (type, key) => h('input', { type, value: form[key] || '', onchange: (e) => quiet({ [key]: e.target.value }) });
+    const range = (label, from, to, toWord) => h('div', { class: 'esh-range' }, [h('span', { text: label }), from, h('span', { text: toWord }), to]);
+    const whenBody = [segmented(whenOpts, form.when, (v) => update({ when: v }))];
+    if (form.when === 'range') {
+      whenBody.push(range('даты с', input('date', 'dateFrom'), input('date', 'dateTo'), 'по'));
+      whenBody.push(range('время с', input('time', 'timeFrom'), input('time', 'timeTo'), 'до'));
+      whenBody.push(h('p', { class: 'esh-note', text: [
+        'Можно указать только даты, только время или и то и другое. Для одного дня поставьте одну и ту же дату в оба поля.',
+        '«С 18:00 до 9:00» значит до или после работы.',
+        ...(option.current ? ['С датами перенесу в эти дни, даже если они позже текущей записи.'] : []),
+      ].join(' ') }));
     }
-    const purpose = purposeField(option, form, update);
-    if (purpose) card.appendChild(purpose);
-    card.appendChild(h('label', { class: 'esh-field', text: '✍️ Как записывать' }));
-    card.appendChild(h('div', {}, [
-      h('label', { class: 'esh-row' }, [
-        h('input', { type: 'radio', name: 'mode-' + option.id, checked: form.mode === 'auto', onchange: () => update({ mode: 'auto' }) }),
-        h('span', { text: 'сразу, без вопросов' }),
-      ]),
-      h('p', { class: 'esh-note esh-under', text: 'О свежей записи уведомление придёт как обычно: в самом приложении ЕМИАС и на электронную почту.' }),
-      h('label', { class: 'esh-row' }, [
-        h('input', { type: 'radio', name: 'mode-' + option.id, checked: form.mode === 'confirm', onchange: () => update({ mode: 'confirm' }) }),
-        h('span', { text: 'уточнить перед записью' }),
-      ]),
-      h('p', { class: 'esh-note esh-under', text: 'Вопрос появится в этой вкладке, на ответ будет 60 секунд.' }),
-    ]));
-    card.appendChild(h('label', { class: 'esh-field', text: '🏁 После успешной записи' }));
-    card.appendChild(h('div', {}, [
-      h('label', { class: 'esh-row' }, [
-        h('input', { type: 'radio', name: 'after-' + option.id, checked: form.afterBooking !== 'improve', onchange: () => update({ afterBooking: 'stop' }) }),
-        h('span', { text: 'остановиться' }),
-      ]),
-      h('label', { class: 'esh-row' }, [
-        h('input', { type: 'radio', name: 'after-' + option.id, checked: form.afterBooking === 'improve', onchange: () => update({ afterBooking: 'improve' }) }),
-        h('span', { text: 'искать ещё раньше' }),
-      ]),
-    ]));
-    const error = stepTwoError(option, form);
+    card.appendChild(section(form, 'when', '📅 Когда', whenSummary(option, form), whenBody, update, /дат|время/.test(error || '')));
+
+    // 📍 Где
+    const whereOpts = [
+      ...(option.address ? [['sameCampus', 'В этом же здании']] : []),
+      ['any', 'Где угодно'],
+      ['list', 'Выбрать адреса'],
+    ];
+    const where = form.where === 'contains' ? 'list' : form.where;
+    const whereBody = [segmented(whereOpts, where, (v) => update({ where: v }))];
+    if (where === 'list') {
+      whereBody.push(tagsField('Подходят', form, 'addrAny', 'addrAnyDraft', 'any', 'например: Знамя труда', update, quiet));
+      whereBody.push(tagsField('Кроме', form, 'addrNone', 'addrNoneDraft', 'none', 'например: Шишкин лес', update, quiet));
+      whereBody.push(h('p', { class: 'esh-note', text: 'Хватит части адреса: улицы, посёлка или номера дома.' }));
+    }
+    const whereSummary = where === 'sameCampus' ? 'в этом же здании' : where === 'list'
+      ? listSummary(form.addrAny, form.addrNone, 'выберите адреса') : 'где угодно';
+    card.appendChild(section(form, 'where', '📍 Где', whereSummary, whereBody, update, /адрес/.test(error || '')));
+
+    // 🩺 Врач
+    if (doctorChoice(option)) {
+      const doctor = form.doctor === 'byName' ? 'byName' : 'any';
+      const docBody = [segmented([['any', 'Любой'], ['byName', 'Выбрать по фамилии']], doctor, (v) => update({ doctor: v }))];
+      if (doctor === 'byName') {
+        docBody.push(tagsField('Подходят', form, 'docAny', 'docAnyDraft', 'any', 'например: Иванова', update, quiet));
+        docBody.push(tagsField('Кроме', form, 'docNone', 'docNoneDraft', 'none', 'например: Петров', update, quiet));
+        docBody.push(h('p', { class: 'esh-note', text: 'Если у врача сейчас нет свободных окошек, охотник подождёт, пока они появятся.' }));
+      }
+      const docSummary = doctor === 'byName' ? listSummary(form.docAny, form.docNone, 'выберите фамилию') : 'любой';
+      card.appendChild(section(form, 'doctor', '🩺 Врач', docSummary, docBody, update, /фамили/.test(error || '')));
+    }
+
+    // 💬 Цель визита
+    if (option.source && option.source.needPurpose) {
+      const purpose = form.purpose === 'documents' ? 'documents' : 'unwell';
+      const opts = [['unwell', ui.INQUIRY_PURPOSES.unwell.title], ['documents', ui.INQUIRY_PURPOSES.documents.title]];
+      card.appendChild(section(form, 'purpose', '💬 Цель визита', ui.INQUIRY_PURPOSES[purpose].title.toLowerCase(),
+        [segmented(opts, purpose, (v) => update({ purpose: v }))], update, false));
+    }
+
+    // ✍️ Как записывать
+    const modeNote = form.mode === 'confirm'
+      ? 'Вопрос появится в этой вкладке, на ответ будет 60 секунд.'
+      : 'О свежей записи уведомление придёт как обычно: в самом приложении ЕМИАС и на электронную почту.';
+    card.appendChild(section(form, 'mode', '✍️ Как записывать', form.mode === 'confirm' ? 'уточнить перед записью' : 'сразу',
+      [segmented([['auto', 'Сразу, без вопросов'], ['confirm', 'Уточнить перед записью']], form.mode, (v) => update({ mode: v })),
+        h('p', { class: 'esh-note', text: modeNote })], update, false));
+
+    // 🏁 После успешной записи
+    const after = form.afterBooking === 'improve' ? 'improve' : 'stop';
+    card.appendChild(section(form, 'after', '🏁 После записи', after === 'improve' ? 'искать ещё раньше' : 'остановиться',
+      [segmented([['stop', 'Остановиться'], ['improve', 'Искать ещё раньше']], after, (v) => update({ afterBooking: v }))], update, false));
+
     const errorEl = h('p', { class: 'esh-warn', text: error || '', hidden: !error });
     errorEl.dataset.optionId = option.id;
     card.appendChild(errorEl);
@@ -803,17 +844,11 @@
       if (!form.dateFrom && !form.dateTo && !form.timeFrom && !form.timeTo) return 'укажите даты или время';
       if (form.dateFrom && form.dateTo && form.dateFrom > form.dateTo) return 'дата «с» позже даты «по»';
     }
-    if (form.doctor === 'byName' && !(form.doctorContains || '').trim()) return 'укажите фамилию врача';
-    if (form.where === 'contains') {
-      if (!form.addressContains.trim()) return 'укажите часть адреса';
-      // Строка непустая, но осмысленных ключей в ней нет (например, «---» или
-      // только «+») — фильтр получится пустым и молча пропустит все адреса.
-      // EmiasCore может отсутствовать (старые тесты подставляют заглушку) —
-      // тогда считаем непустую строку валидной.
-      const { parseAddressFilter } = globalThis.EmiasCore || {};
-      const f = parseAddressFilter ? parseAddressFilter(form.addressContains) : { any: ['x'], none: [] };
-      if (!f.any.length && !f.none.length) return 'укажите адрес';
-    }
+    const has = (list, draft) => (list || []).length > 0 || !!ui.cleanTag(draft || '');
+    if (form.doctor === 'byName' && doctorChoice(option)
+      && !has(form.docAny, form.docAnyDraft) && !has(form.docNone, form.docNoneDraft)) return 'укажите фамилию врача';
+    if ((form.where === 'list' || form.where === 'contains')
+      && !has(form.addrAny, form.addrAnyDraft) && !has(form.addrNone, form.addrNoneDraft)) return 'укажите адрес';
     return null;
   }
 
