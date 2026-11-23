@@ -748,7 +748,7 @@
         h('input', { type: 'radio', name: 'mode-' + option.id, checked: form.mode === 'confirm', onchange: () => update({ mode: 'confirm' }) }),
         h('span', { text: 'сначала спрашивать' }),
       ]),
-      h('p', { class: 'esh-note', text: 'О записи сообщит ЕМИАС: push в приложении и письмо, как обычно. Если спрашивать — на ответ 60 секунд, вопрос появится в этой вкладке.' }),
+      h('p', { class: 'esh-note', text: 'О новой удобной записи придёт уведомление в приложении ЕМИАС и на электронную почту, как обычно. Если спрашивать — на ответ 60 секунд, вопрос появится в этой вкладке.' }),
     ]));
     card.appendChild(h('label', { class: 'esh-field', text: '🏁 После записи' }));
     card.appendChild(h('div', {}, [
