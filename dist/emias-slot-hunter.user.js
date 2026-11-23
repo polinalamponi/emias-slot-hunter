@@ -2240,15 +2240,17 @@
       .esh-card { width: 320px; max-width: calc(100vw - 32px); box-sizing: border-box; max-height: 70vh; overflow: auto; background: #fff; color: #222; border-radius: 12px; box-shadow: 0 4px 20px rgba(0,0,0,.3); padding: 14px; }
       /* На компьютере мастер шире и выше: шаг 2 с несколькими целями иначе превращается в длинную ленту. */
       @media (min-width: 900px) { .esh-card { width: 440px; max-height: 82vh; padding: 18px; } }
-      .esh-card h3 { margin: 0 0 8px; font-size: 16px; }
+      .esh-card h3 { margin: 0 0 12px; font-size: 16px; }
       .esh-card p { margin: 4px 0; font-size: 13px; line-height: 1.4; }
-      .esh-row { display: flex; align-items: center; gap: 8px; margin: 6px 0; }
-      .esh-opt { border: 1px solid #e0e0e0; border-radius: 8px; padding: 8px; margin-bottom: 8px; }
+      .esh-row { display: flex; align-items: center; gap: 8px; margin: 3px 0; line-height: 1.3; }
+      .esh-opt { border: 1px solid #e0e0e0; border-radius: 8px; padding: 10px 14px 12px; margin-bottom: 10px; }
       .esh-opt.disabled { opacity: .55; }
-      .esh-opt .title { font-weight: 600; font-size: 13px; }
+      .esh-opt .title { font-weight: 600; font-size: 14px; }
       .esh-opt .meta { font-size: 12px; color: #666; }
       .esh-opt .reason { font-size: 12px; color: #a33; }
-      .esh-field { display: block; font-size: 13px; font-weight: 600; margin: 12px 0 2px; color: #333; }
+      .esh-field { display: block; font-size: 13px; font-weight: 600; margin: 12px 0 4px; color: #333; }
+      /* Разделы условий (Когда, Где, …) отделены тонкой линией — иначе шаг 2 читается сплошным полотном. */
+      .esh-opt .esh-field { border-top: 1px solid #eee; padding-top: 12px; margin-top: 12px; }
       .esh-card input[type=text], .esh-card input[type=date], .esh-card input[type=time] { width: 100%; padding: 4px 6px; margin-top: 4px; font-size: 13px; border: 1px solid #ccc; border-radius: 6px; }
       .esh-btns { display: flex; gap: 8px; margin-top: 12px; }
       .esh-btn { flex: 1; padding: 8px 10px; border-radius: 8px; border: 1px solid #ccc; background: #f4f4f4; cursor: pointer; font-size: 13px; }
@@ -2256,8 +2258,8 @@
       .esh-btn.primary:disabled { background: #a9c6ea; border-color: #a9c6ea; cursor: not-allowed; }
       .esh-btn.danger { background: #d64545; color: #fff; border-color: #d64545; }
       .esh-warn { color: #a33; font-size: 12px; }
-      .esh-note { color: #666; font-size: 12px; }
-      .esh-note.esh-under { margin: -2px 0 8px; }
+      .esh-note { color: #666; font-size: 12px; line-height: 1.4; margin: 4px 0 8px; }
+      .esh-note.esh-under { margin: 0 0 8px; }
       .esh-status-target { margin-bottom: 8px; }
       .esh-status-target p { margin: 2px 0; }
       .esh-thanks { width: 300px; max-width: calc(100vw - 32px); box-sizing: border-box; background: #eef8ee; border: 1px solid #8cc58c; border-radius: 10px; padding: 10px; margin-bottom: 8px; box-shadow: 0 2px 10px rgba(0,0,0,.2); font-size: 13px; color: #222; }
@@ -2274,7 +2276,7 @@
       .esh-slept[hidden] { display: none; }
       .esh-log { font-size: 12px; max-height: 160px; overflow: auto; background: #fafafa; border: 1px solid #eee; border-radius: 6px; padding: 6px; }
       .esh-log div { margin-bottom: 4px; }
-      .esh-range { display: flex; align-items: center; gap: 6px; margin: 4px 0 2px; font-size: 13px; }
+      .esh-range { display: flex; align-items: center; gap: 6px; margin: 6px 0; font-size: 13px; }
       .esh-range > span { flex: none; color: #444; }
       .esh-card .esh-range input[type=date], .esh-card .esh-range input[type=time] { flex: 1; min-width: 0; margin-top: 0; }
     `;
