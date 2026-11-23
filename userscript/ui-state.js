@@ -228,6 +228,19 @@
 
     function normalizeForm(form) {
       const f = { ...(form || {}) };
+      // Готовые варианты «когда» из мастера (фраза на шаге 2) → when и время.
+      // Утро/вечер/«до или после работы» — диапазон только по времени: для
+      // новой записи — самое раннее в это время, для переноса — раньше
+      // текущей записи, но в это время.
+      if (f.whenPreset) {
+        const timeOnly = (from, to) => { f.when = 'range'; f.dateFrom = ''; f.dateTo = ''; f.timeFrom = from; f.timeTo = to; };
+        if (f.whenPreset === 'asap') f.when = 'earlier';
+        else if (f.whenPreset === 'sameDay') f.when = 'sameDayEarlier';
+        else if (f.whenPreset === 'morning') timeOnly('', '12:00');
+        else if (f.whenPreset === 'evening') timeOnly('18:00', '');
+        else if (f.whenPreset === 'work') timeOnly('18:00', '09:00');
+        else if (f.whenPreset === 'custom') f.when = 'range';
+      }
       if (f.where === 'list') {
         f.where = 'contains';
         f.addressContains = tagsToFilter(f.addrAny, f.addrNone, f.addrAnyDraft, f.addrNoneDraft);

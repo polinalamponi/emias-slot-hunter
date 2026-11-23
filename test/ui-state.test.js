@@ -293,3 +293,23 @@ test('теги адреса и врача → фильтр ядра и чело�
   assert.equal(addressMatches('Иванова А.П.', d.doctorContains), true);
   assert.equal(addressMatches('Петрова Б.В.', d.doctorContains), false);
 });
+
+test('готовые варианты «когда»: утро, вечер, до или после работы, тот же день', () => {
+  const build = (opt, preset) => ui.buildTarget(opt, { ...ui.normalizeForm({ whenPreset: preset, dateFrom: '2026-10-10', timeFrom: '07:00' }), where: 'any', mode: 'auto' });
+  const fresh = { ...option, current: null };
+  const m = build(fresh, 'morning');
+  assert.deepEqual([m.dateFrom, m.timeFrom, m.timeTo], [null, null, '12:00'], 'утро — только время, старые даты не мешают');
+  const e = build(fresh, 'evening');
+  assert.deepEqual([e.timeFrom, e.timeTo], ['18:00', null]);
+  const w = build(fresh, 'work');
+  assert.deepEqual([w.timeFrom, w.timeTo], ['18:00', '09:00']);
+  assert.match(ui.describeTarget(w), /после 18:00 или до 09:00/);
+  // у переноса утро — «раньше текущей записи, но утром», не «в любые даты»
+  const ms = build(option, 'morning');
+  assert.equal(ms.anyTime, false);
+  assert.equal(ms.timeTo, '12:00');
+  const sd = build(option, 'sameDay');
+  assert.equal(sd.onlyDay, String(option.current).slice(0, 10));
+  const asap = build(fresh, 'asap');
+  assert.deepEqual([asap.dateFrom, asap.timeFrom, asap.timeTo], [null, null, null]);
+});
