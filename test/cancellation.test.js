@@ -339,7 +339,7 @@ test('интерфейс: после записи предлагает угос�
   assert.ok(JSON.parse(env.storage.getItem('emiasSlotHunter:thanks')).shownAt, 'время показа запомнено');
   assert.match(card.querySelector('.esh-thanks-title').textContent, /^🎉 Охотник записал вас на \d+ [а-я]+, \d{1,2}:\d\d$/);
   assert.equal(card.querySelector('.esh-sign').textContent, 'Полина, автор проекта');
-  const later = card.querySelectorAll('button').find((b) => b.textContent === '😒 Не сейчас');
+  const later = card.querySelectorAll('button').find((b) => b.textContent === 'Не сейчас');
   later.click();
   assert.equal(ui.root.querySelectorAll('.esh-thanks').length, 0, '«Не сейчас» убирает карточку');
 });
@@ -387,8 +387,8 @@ test('интерфейс: после входа на сайте значок «�
 });
 
 // Сразу после входа сайт кладёт токен, а полис — чуть позже: не мигаем
-// «Не нашла полис», показываем «Проверяю вход…» и ждём полис молча.
-test('интерфейс: после входа не мигает «Не нашла полис», пока сайт догружает полис', async () => {
+// «Не нашёл полис», показываем «Проверяю вход…» и ждём полис молча.
+test('интерфейс: после входа не мигает «Не нашёл полис», пока сайт догружает полис', async () => {
   const env = await environment({ mode: 'auto', scenario: 'bookLab' });
   const realAuth = env.storage.getItem('persist:sessionAuth');
   const realPersist = env.storage.getItem('persist:persist');
@@ -402,7 +402,7 @@ test('интерфейс: после входа не мигает «Не наш�
   env.storage.setItem('persist:sessionAuth', realAuth); // вошли, полиса ещё нет
   watcher().fn();
   await flush();
-  assert.doesNotMatch(badge(), /полис/, 'не пугаем «Не нашла полис» в первые секунды после входа');
+  assert.doesNotMatch(badge(), /полис/, 'не пугаем «Не нашёл полис» в первые секунды после входа');
   assert.match(badge(), /Проверяю вход/);
 
   env.storage.setItem('persist:persist', realPersist); // сайт догрузил полис

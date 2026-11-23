@@ -22,8 +22,8 @@
       .replace(/\b[А-ЯЁ][а-яё]+\s+[А-ЯЁ][а-яё]+(вич|вна|ична)\b/g, '<ФИО>');
 
     const KNOWN = {
-      SA_SAME_BM_IS_NOT_AVAILABLE: { message: 'Вы уже записаны на это исследование — буду переносить запись раньше.', action: 'switchToShift' },
-      SA_REFERRAL_EXPIRED: { message: 'Направление истекло — цель отключена.', action: 'stopTarget' },
+      SA_SAME_BM_IS_NOT_AVAILABLE: { message: 'Вы уже записаны на это исследование, буду искать время раньше и перенесу.', action: 'switchToShift' },
+      SA_REFERRAL_EXPIRED: { message: 'Направление истекло, цель отключена.', action: 'stopTarget' },
       SA_APPOINTMENT_NOT_FOUND: { message: 'Запись не найдена: возможно, её отменили или перенесли в другом месте.', action: 'stopTarget' },
       // Живой ответ ЕМИАС и на перенос уже начавшейся записи, и на приём
       // без направления (ЦЖЗ), который сайт этим путём переносить не даёт.
@@ -40,9 +40,9 @@
       // explain() напрямую (см. test/errors.test.js) и на случай, если этот
       // порядок обработки 401 в api.js когда-нибудь изменится — тест ниже
       // прямо помечен как проверка explain() в изоляции, а не сквозного пути.
-      if (status === 401) return { message: 'Вход в ЕМИАС закончился. Войдите заново — поиск продолжится сам.', action: 'relogin' };
-      if (status === 429) return { message: 'ЕМИАС просит не частить — пауза 30 секунд.', action: 'wait' };
-      if (status >= 500) return { message: 'ЕМИАС временно отвечает ошибкой — пауза 30 секунд.', action: 'wait' };
+      if (status === 401) return { message: 'Вход в ЕМИАС закончился. Войдите заново, и поиск продолжится сам.', action: 'relogin' };
+      if (status === 429) return { message: 'ЕМИАС просит не частить, пауза 30 секунд.', action: 'wait' };
+      if (status >= 500) return { message: 'ЕМИАС временно отвечает ошибкой, пауза 30 секунд.', action: 'wait' };
       return { message: 'Непонятный ответ ЕМИАС: ' + mask(text).slice(0, 300), action: 'retry' };
     }
 

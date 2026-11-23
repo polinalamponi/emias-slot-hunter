@@ -35,7 +35,7 @@
         // Увеличиваем паузу при сетевой ошибке: 30s → 60s → 120s → 300s
         netStep = Math.min(netStep + 1, NET_STEPS.length - 1);
         backoffUntil = now() + NET_STEPS[netStep];
-        return { ok: false, status: 0, json: null, explained: { message: 'Нет связи с ЕМИАС — попробую позже.', action: 'wait' } };
+        return { ok: false, status: 0, json: null, explained: { message: 'Нет связи с ЕМИАС, попробую позже.', action: 'wait' } };
       }
       // Сброс счётчика сетевых ошибок при успешном соединении
       netStep = -1;
@@ -58,7 +58,7 @@
       // техническим языком — и той же формулировкой, что уже даёт errors.js
       // для 401 (см. explain()), чтобы текст не расходился в зависимости от
       // того, через какой путь сессия оказалась потеряна.
-      if (r.status === 401) throw new SessionError('Вход в ЕМИАС закончился. Войдите заново — поиск продолжится сам.');
+      if (r.status === 401) throw new SessionError('Вход в ЕМИАС закончился. Войдите заново, и поиск продолжится сам.');
       // 429 и 5xx ошибки требуют паузу
       if (r.status === 429 || r.status >= 500) backoffUntil = now() + 30000;
 

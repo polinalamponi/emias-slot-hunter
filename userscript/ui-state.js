@@ -144,7 +144,7 @@
     function describeDryRunItem(item) {
       const head = item.waiting
         ? `${item.title}: подходящих окошек пока нет, жду`
-        : `${item.title}: записала бы на ${human(item.would.startTime)} — ${item.would.address}`;
+        : `${item.title}: записал бы на ${human(item.would.startTime)} · ${item.would.address}`;
       const warn = (item.warnings || []).map((w) => `\n  ⚠ ${w}`).join('');
       const notes = (item.notes || []).map((n) => `\n  · ${n}`).join('');
       return head + warn + notes;

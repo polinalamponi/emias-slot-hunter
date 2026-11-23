@@ -224,7 +224,7 @@
     } catch (e) {
       if (!wake.warned) {
         wake.warned = true;
-        pushLog({ at: Date.now(), msg: 'Браузер не дал запретить экрану гаснуть — следите, чтобы устройство не уснуло' });
+        pushLog({ at: Date.now(), msg: 'Браузер не дал запретить экрану гаснуть. Следите, чтобы устройство не уснуло' });
       }
     } finally {
       wake.pending = false;
@@ -1051,8 +1051,8 @@
   function onNeedConfirm(payload) {
     // I8: окно ответа всего 60 секунд, а вкладка обычно фоновая — без звука
     // и уведомления человек может просто не заметить запрос вовремя.
-    const where = payload.address ? ` — ${ui.stripCampus(payload.address)}` : '';
-    notify('ЕМИАС: нужно решение', `${payload.title}: ${ui.human(payload.slot.startTime)}${where} — 60 секунд на ответ`);
+    const where = payload.address ? ` · ${ui.stripCampus(payload.address)}` : '';
+    notify('ЕМИАС: нужно решение', `${payload.title}: ${ui.human(payload.slot.startTime)}${where}. На ответ 60 секунд`);
     const targetId = payload.targetId;
     removeConfirmCard(targetId);
     const tickId = setInterval(() => {
@@ -1122,7 +1122,7 @@
     if (pendingConfirms[targetId] !== p) return;
     delete pendingConfirms[targetId];
     if (cancelled || !failText) { dropNode(); return; }
-    const text = `${title}: записать не удалось — ${failText}`;
+    const text = `${title}: записать не удалось. ${failText.charAt(0).toUpperCase()}${failText.slice(1)}`;
     if (!alreadyLogged) pushLog({ at: Date.now(), msg: text });
     if (node) {
       showCardNote(node, text, true);
@@ -1179,7 +1179,7 @@
   // раздел «Полисы ОМС»).
   function initErrorBadge(e) {
     if (e && e.name === 'IdentityError') {
-      return { kind: 'needIdentity', text: '🔒 Не нашла полис и дату рождения', detail: 'откройте на сайте «Полисы ОМС», дальше продолжу сам' };
+      return { kind: 'needIdentity', text: '🔒 Не нашёл полис и дату рождения', detail: 'откройте на сайте «Полисы ОМС», дальше продолжу сам' };
     }
     return { kind: 'needLogin', text: '🔒 Войдите в ЕМИАС', detail: 'после входа продолжу сам' };
   }
@@ -1308,15 +1308,15 @@
           class: 'esh-btn primary', href: DONATE_URL, target: '_blank', rel: 'noopener noreferrer',
           text: '☕ Угостить кофе', onclick: () => { saveThanks({ donatedAt: Date.now() }); showThanksDone(); },
         }),
-        h('button', { class: 'esh-btn', text: '😒 Не сейчас', onclick: hideThanks }),
+        h('button', { class: 'esh-btn', text: 'Не сейчас', onclick: hideThanks }),
       ]),
     ]));
   }
 
   function onBooked(payload) {
-    const where = payload.address ? ` — ${ui.stripCampus(payload.address)}` : '';
+    const where = payload.address ? ` · ${ui.stripCampus(payload.address)}` : '';
     notify('ЕМИАС: записано', `${payload.title}: ${ui.human(payload.slot.startTime)}${where}`);
-    pushLog({ at: Date.now(), msg: `Записано: ${payload.title} — ${ui.human(payload.slot.startTime)}` });
+    pushLog({ at: Date.now(), msg: `Записано: ${payload.title} на ${ui.human(payload.slot.startTime)}` });
     // C1: раннер меняет current/source/scenario цели (перенос keepImproving)
     // только у себя в памяти — без этого сохранённые настройки (cfg.targets)
     // оставались бы со старыми полями, и следующий запуск по ним (перезагрузка
@@ -1343,7 +1343,7 @@
     const cfg = ui.loadConfig(storage);
     const b = cfg && cfg.lastBooked;
     if (!b) return false;
-    setBadge({ kind: 'booked', text: '✅ Записано: ' + b.title, detail: b.startTime ? 'на ' + ui.human(b.startTime) + ' — нажмите, чтобы посмотреть' : '' });
+    setBadge({ kind: 'booked', text: '✅ Записано: ' + b.title, detail: b.startTime ? 'на ' + ui.human(b.startTime) + '. Нажмите, чтобы посмотреть' : '' });
     return true;
   }
 
@@ -1382,7 +1382,7 @@
 
   function onFound(payload) {
     if (payload && payload.targetId) foundCount[payload.targetId] = (foundCount[payload.targetId] || 0) + 1;
-    pushLog({ at: Date.now(), msg: `${titleFor(payload.targetId)}: ${payload.warning || 'проверила расписание'}` });
+    pushLog({ at: Date.now(), msg: `${titleFor(payload.targetId)}: ${payload.warning || 'проверил расписание'}` });
   }
 
   function onLog(payload) { pushLog(payload); }

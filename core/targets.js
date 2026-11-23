@@ -190,7 +190,7 @@
       candidates.sort((a, b) => compare(a.slot, b.slot));
       if (addressUnknown) notes.push(`Пропущено кабинетов без адреса: ${addressUnknown}`);
       if (addressMismatch) notes.push(`Пропущено кабинетов по другому адресу: ${addressMismatch}`);
-      if (pausedByBackoff) notes.push('ЕМИАС попросил паузу — остальное проверю в следующий раз');
+      if (pausedByBackoff) notes.push('ЕМИАС попросил паузу, остальное проверю в следующий раз');
       return { candidates, rejected, notes, action };
     }
 
@@ -324,12 +324,12 @@
       if (verify.verifyFailed) {
         return {
           ok: true, verified: false, verifyFailed: true,
-          message: 'Не смогла проверить запись: ЕМИАС не отдал список. Проверю в следующий раз.',
+          message: 'Не смог проверить запись: ЕМИАС не отдал список. Проверю в следующий раз.',
           action: null,
         };
       }
       if (!verify.found) {
-        return { ok: true, verified: false, message: 'ЕМИАС ответил «готово», но записи в списке нет — проверьте на сайте', action: null };
+        return { ok: true, verified: false, message: 'ЕМИАС ответил «готово», но записи в списке нет. Проверьте на сайте', action: null };
       }
       return { ok: true, verified: true, message: 'Готово', newAppointment: verify.found, action: null };
     }

@@ -256,7 +256,7 @@
       if (!opts.identity && !siteLoggedIn()) throw new Error('нет входа в ЕМИАС: войдите на сайте и попробуйте снова');
       const id = opts.identity || await identityFromStorage();
       if (!id.oms || !id.birth) {
-        throw new IdentityError('не удалось определить полис и дату рождения — откройте раздел «Записи» на сайте и попробуйте снова');
+        throw new IdentityError('не удалось определить полис и дату рождения. Откройте раздел «Записи» на сайте и попробуйте снова');
       }
       session.setIdentity(id);
       return { ok: true };

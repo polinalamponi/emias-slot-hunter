@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         ЕМИАС: охотник за слотами
 // @namespace    https://github.com/polinalamponi/emias-slot-hunter
-// @version      0.1.7-test.2
+// @version      0.1.7-test.3
 // @description  Следит за расписанием ЕМИАС и ловит освободившиеся слоты: записывает по направлению и переносит записи на более раннее время
 // @author       polinalamponi
 // @homepageURL  https://github.com/polinalamponi/emias-slot-hunter
@@ -71,8 +71,8 @@
       .replace(/\b[А-ЯЁ][а-яё]+\s+[А-ЯЁ][а-яё]+(вич|вна|ична)\b/g, '<ФИО>');
 
     const KNOWN = {
-      SA_SAME_BM_IS_NOT_AVAILABLE: { message: 'Вы уже записаны на это исследование — буду переносить запись раньше.', action: 'switchToShift' },
-      SA_REFERRAL_EXPIRED: { message: 'Направление истекло — цель отключена.', action: 'stopTarget' },
+      SA_SAME_BM_IS_NOT_AVAILABLE: { message: 'Вы уже записаны на это исследование, буду искать время раньше и перенесу.', action: 'switchToShift' },
+      SA_REFERRAL_EXPIRED: { message: 'Направление истекло, цель отключена.', action: 'stopTarget' },
       SA_APPOINTMENT_NOT_FOUND: { message: 'Запись не найдена: возможно, её отменили или перенесли в другом месте.', action: 'stopTarget' },
       // Живой ответ ЕМИАС и на перенос уже начавшейся записи, и на приём
       // без направления (ЦЖЗ), который сайт этим путём переносить не даёт.
@@ -89,9 +89,9 @@
       // explain() напрямую (см. test/errors.test.js) и на случай, если этот
       // порядок обработки 401 в api.js когда-нибудь изменится — тест ниже
       // прямо помечен как проверка explain() в изоляции, а не сквозного пути.
-      if (status === 401) return { message: 'Вход в ЕМИАС закончился. Войдите заново — поиск продолжится сам.', action: 'relogin' };
-      if (status === 429) return { message: 'ЕМИАС просит не частить — пауза 30 секунд.', action: 'wait' };
-      if (status >= 500) return { message: 'ЕМИАС временно отвечает ошибкой — пауза 30 секунд.', action: 'wait' };
+      if (status === 401) return { message: 'Вход в ЕМИАС закончился. Войдите заново, и поиск продолжится сам.', action: 'relogin' };
+      if (status === 429) return { message: 'ЕМИАС просит не частить, пауза 30 секунд.', action: 'wait' };
+      if (status >= 500) return { message: 'ЕМИАС временно отвечает ошибкой, пауза 30 секунд.', action: 'wait' };
       return { message: 'Непонятный ответ ЕМИАС: ' + mask(text).slice(0, 300), action: 'retry' };
     }
 
@@ -414,7 +414,7 @@
         // Увеличиваем паузу при сетевой ошибке: 30s → 60s → 120s → 300s
         netStep = Math.min(netStep + 1, NET_STEPS.length - 1);
         backoffUntil = now() + NET_STEPS[netStep];
-        return { ok: false, status: 0, json: null, explained: { message: 'Нет связи с ЕМИАС — попробую позже.', action: 'wait' } };
+        return { ok: false, status: 0, json: null, explained: { message: 'Нет связи с ЕМИАС, попробую позже.', action: 'wait' } };
       }
       // Сброс счётчика сетевых ошибок при успешном соединении
       netStep = -1;
@@ -437,7 +437,7 @@
       // техническим языком — и той же формулировкой, что уже даёт errors.js
       // для 401 (см. explain()), чтобы текст не расходился в зависимости от
       // того, через какой путь сессия оказалась потеряна.
-      if (r.status === 401) throw new SessionError('Вход в ЕМИАС закончился. Войдите заново — поиск продолжится сам.');
+      if (r.status === 401) throw new SessionError('Вход в ЕМИАС закончился. Войдите заново, и поиск продолжится сам.');
       // 429 и 5xx ошибки требуют паузу
       if (r.status === 429 || r.status >= 500) backoffUntil = now() + 30000;
 
@@ -560,7 +560,7 @@
         if (ref.countActiveAppointment > 0) continue;
         if (expired(ref.endTime)) continue;
         if (ref.toDoctor) {
-          const title = ref.toDoctor.specialityName + (ref.toDoctor.doctorFio ? ' — ' + ref.toDoctor.doctorFio : '');
+          const title = ref.toDoctor.specialityName + (ref.toDoctor.doctorFio ? ', ' + ref.toDoctor.doctorFio : '');
           out.push({ id: 'ref:' + ref.id, scenario: 'bookDoctor', title, current: null,
             address: null, place: ref.lpuName || null, deadline: ref.endTime, supported: true, unsupportedReason: null,
             source: {
@@ -786,7 +786,7 @@
       candidates.sort((a, b) => compare(a.slot, b.slot));
       if (addressUnknown) notes.push(`Пропущено кабинетов без адреса: ${addressUnknown}`);
       if (addressMismatch) notes.push(`Пропущено кабинетов по другому адресу: ${addressMismatch}`);
-      if (pausedByBackoff) notes.push('ЕМИАС попросил паузу — остальное проверю в следующий раз');
+      if (pausedByBackoff) notes.push('ЕМИАС попросил паузу, остальное проверю в следующий раз');
       return { candidates, rejected, notes, action };
     }
 
@@ -920,12 +920,12 @@
       if (verify.verifyFailed) {
         return {
           ok: true, verified: false, verifyFailed: true,
-          message: 'Не смогла проверить запись: ЕМИАС не отдал список. Проверю в следующий раз.',
+          message: 'Не смог проверить запись: ЕМИАС не отдал список. Проверю в следующий раз.',
           action: null,
         };
       }
       if (!verify.found) {
-        return { ok: true, verified: false, message: 'ЕМИАС ответил «готово», но записи в списке нет — проверьте на сайте', action: null };
+        return { ok: true, verified: false, message: 'ЕМИАС ответил «готово», но записи в списке нет. Проверьте на сайте', action: null };
       }
       return { ok: true, verified: true, message: 'Готово', newAppointment: verify.found, action: null };
     }
@@ -1069,7 +1069,7 @@
         t.source = { ...t.source, appointmentId: a.id, moId: a.lpuId || t.source.moId };
         t.scenario = 'shiftLab';
       }
-      log(`${t.title}: по направлению уже есть запись на ${when} — ищу раньше и перенесу`);
+      log(`${t.title}: по направлению уже есть запись на ${when}, ищу время раньше и перенесу`);
       // Обвязка сохраняет цели отдельно (см. C1 в finish()), поэтому новые
       // current/source/scenario отдаём событием, как и после своей записи.
       emit('targetUpdated', { targetId: t.id, title: t.title, current: t.current, source: t.source, scenario: t.scenario });
@@ -1175,7 +1175,7 @@
       if (!state.running || id !== runId) return false;
       if (state.confirmed !== gateFingerprint(state.list)) {
         stop();
-        emit('needDryRun', { message: 'цели изменились — нужен новый холостой прогон' });
+        emit('needDryRun', { message: 'цели изменились, нужен новый холостой прогон' });
         return false;
       }
       return true;
@@ -1340,7 +1340,7 @@
             // слоты раньше неё отсеет minLeadMs, а ЕМИАС на перенос начавшейся
             // записи отвечает ошибкой. Завершаем цель, а не долбим сайт.
             if (t.current && Date.parse(t.current) - now() < (t.minLeadMs || 0)) {
-              const message = `запись на ${String(t.current).slice(0, 16).replace('T', ' ')} уже скоро или прошла — больше не переношу`;
+              const message = `запись на ${String(t.current).slice(0, 16).replace('T', ' ')} уже скоро или прошла, больше не переношу`;
               state.byId[t.id] = { state: 'done', note: message };
               emit('targetDone', { targetId: t.id, title: t.title, message });
               continue;
@@ -1376,7 +1376,7 @@
             const vf = state.verifyFailedKey[t.id];
             if (vf) {
               if (now() < vf.expiresAt && vf.key === key) {
-                log(`${t.title}: не смогла проверить эту запись — в следующий раз попробую другое окошко`);
+                log(`${t.title}: не смог проверить эту запись, в следующий раз попробую другое окошко`);
                 continue;
               }
               // Либо срок истёк, либо появился другой кандидат — метка не актуальна.
@@ -1713,7 +1713,7 @@
       if (!opts.identity && !siteLoggedIn()) throw new Error('нет входа в ЕМИАС: войдите на сайте и попробуйте снова');
       const id = opts.identity || await identityFromStorage();
       if (!id.oms || !id.birth) {
-        throw new IdentityError('не удалось определить полис и дату рождения — откройте раздел «Записи» на сайте и попробуйте снова');
+        throw new IdentityError('не удалось определить полис и дату рождения. Откройте раздел «Записи» на сайте и попробуйте снова');
       }
       session.setIdentity(id);
       return { ok: true };
@@ -1906,7 +1906,7 @@
     function describeDryRunItem(item) {
       const head = item.waiting
         ? `${item.title}: подходящих окошек пока нет, жду`
-        : `${item.title}: записала бы на ${human(item.would.startTime)} — ${item.would.address}`;
+        : `${item.title}: записал бы на ${human(item.would.startTime)} · ${item.would.address}`;
       const warn = (item.warnings || []).map((w) => `\n  ⚠ ${w}`).join('');
       const notes = (item.notes || []).map((n) => `\n  · ${n}`).join('');
       return head + warn + notes;
@@ -2292,7 +2292,7 @@
     } catch (e) {
       if (!wake.warned) {
         wake.warned = true;
-        pushLog({ at: Date.now(), msg: 'Браузер не дал запретить экрану гаснуть — следите, чтобы устройство не уснуло' });
+        pushLog({ at: Date.now(), msg: 'Браузер не дал запретить экрану гаснуть. Следите, чтобы устройство не уснуло' });
       }
     } finally {
       wake.pending = false;
@@ -3119,8 +3119,8 @@
   function onNeedConfirm(payload) {
     // I8: окно ответа всего 60 секунд, а вкладка обычно фоновая — без звука
     // и уведомления человек может просто не заметить запрос вовремя.
-    const where = payload.address ? ` — ${ui.stripCampus(payload.address)}` : '';
-    notify('ЕМИАС: нужно решение', `${payload.title}: ${ui.human(payload.slot.startTime)}${where} — 60 секунд на ответ`);
+    const where = payload.address ? ` · ${ui.stripCampus(payload.address)}` : '';
+    notify('ЕМИАС: нужно решение', `${payload.title}: ${ui.human(payload.slot.startTime)}${where}. На ответ 60 секунд`);
     const targetId = payload.targetId;
     removeConfirmCard(targetId);
     const tickId = setInterval(() => {
@@ -3190,7 +3190,7 @@
     if (pendingConfirms[targetId] !== p) return;
     delete pendingConfirms[targetId];
     if (cancelled || !failText) { dropNode(); return; }
-    const text = `${title}: записать не удалось — ${failText}`;
+    const text = `${title}: записать не удалось. ${failText.charAt(0).toUpperCase()}${failText.slice(1)}`;
     if (!alreadyLogged) pushLog({ at: Date.now(), msg: text });
     if (node) {
       showCardNote(node, text, true);
@@ -3247,7 +3247,7 @@
   // раздел «Полисы ОМС»).
   function initErrorBadge(e) {
     if (e && e.name === 'IdentityError') {
-      return { kind: 'needIdentity', text: '🔒 Не нашла полис и дату рождения', detail: 'откройте на сайте «Полисы ОМС», дальше продолжу сам' };
+      return { kind: 'needIdentity', text: '🔒 Не нашёл полис и дату рождения', detail: 'откройте на сайте «Полисы ОМС», дальше продолжу сам' };
     }
     return { kind: 'needLogin', text: '🔒 Войдите в ЕМИАС', detail: 'после входа продолжу сам' };
   }
@@ -3376,15 +3376,15 @@
           class: 'esh-btn primary', href: DONATE_URL, target: '_blank', rel: 'noopener noreferrer',
           text: '☕ Угостить кофе', onclick: () => { saveThanks({ donatedAt: Date.now() }); showThanksDone(); },
         }),
-        h('button', { class: 'esh-btn', text: '😒 Не сейчас', onclick: hideThanks }),
+        h('button', { class: 'esh-btn', text: 'Не сейчас', onclick: hideThanks }),
       ]),
     ]));
   }
 
   function onBooked(payload) {
-    const where = payload.address ? ` — ${ui.stripCampus(payload.address)}` : '';
+    const where = payload.address ? ` · ${ui.stripCampus(payload.address)}` : '';
     notify('ЕМИАС: записано', `${payload.title}: ${ui.human(payload.slot.startTime)}${where}`);
-    pushLog({ at: Date.now(), msg: `Записано: ${payload.title} — ${ui.human(payload.slot.startTime)}` });
+    pushLog({ at: Date.now(), msg: `Записано: ${payload.title} на ${ui.human(payload.slot.startTime)}` });
     // C1: раннер меняет current/source/scenario цели (перенос keepImproving)
     // только у себя в памяти — без этого сохранённые настройки (cfg.targets)
     // оставались бы со старыми полями, и следующий запуск по ним (перезагрузка
@@ -3411,7 +3411,7 @@
     const cfg = ui.loadConfig(storage);
     const b = cfg && cfg.lastBooked;
     if (!b) return false;
-    setBadge({ kind: 'booked', text: '✅ Записано: ' + b.title, detail: b.startTime ? 'на ' + ui.human(b.startTime) + ' — нажмите, чтобы посмотреть' : '' });
+    setBadge({ kind: 'booked', text: '✅ Записано: ' + b.title, detail: b.startTime ? 'на ' + ui.human(b.startTime) + '. Нажмите, чтобы посмотреть' : '' });
     return true;
   }
 
@@ -3450,7 +3450,7 @@
 
   function onFound(payload) {
     if (payload && payload.targetId) foundCount[payload.targetId] = (foundCount[payload.targetId] || 0) + 1;
-    pushLog({ at: Date.now(), msg: `${titleFor(payload.targetId)}: ${payload.warning || 'проверила расписание'}` });
+    pushLog({ at: Date.now(), msg: `${titleFor(payload.targetId)}: ${payload.warning || 'проверил расписание'}` });
   }
 
   function onLog(payload) { pushLog(payload); }

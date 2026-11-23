@@ -63,7 +63,7 @@ test('направление к конкретному врачу без зап�
   const list = await createDiscover({ api }).list();
   const ref = list.find((o) => o.id === 'ref:900000000003');
   assert.equal(ref.scenario, 'bookDoctor');
-  assert.equal(ref.title, 'Врач-невролог — Петров П.П.');
+  assert.equal(ref.title, 'Врач-невролог, Петров П.П.');
   assert.deepEqual(ref.source, {
     referralId: 900000000003, lpuId: 10000004, specialityId: 11, needPurpose: false, availableResourceId: 200000005,
   });

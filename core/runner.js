@@ -128,7 +128,7 @@
         t.source = { ...t.source, appointmentId: a.id, moId: a.lpuId || t.source.moId };
         t.scenario = 'shiftLab';
       }
-      log(`${t.title}: по направлению уже есть запись на ${when} — ищу раньше и перенесу`);
+      log(`${t.title}: по направлению уже есть запись на ${when}, ищу время раньше и перенесу`);
       // Обвязка сохраняет цели отдельно (см. C1 в finish()), поэтому новые
       // current/source/scenario отдаём событием, как и после своей записи.
       emit('targetUpdated', { targetId: t.id, title: t.title, current: t.current, source: t.source, scenario: t.scenario });
@@ -234,7 +234,7 @@
       if (!state.running || id !== runId) return false;
       if (state.confirmed !== gateFingerprint(state.list)) {
         stop();
-        emit('needDryRun', { message: 'цели изменились — нужен новый холостой прогон' });
+        emit('needDryRun', { message: 'цели изменились, нужен новый холостой прогон' });
         return false;
       }
       return true;
@@ -399,7 +399,7 @@
             // слоты раньше неё отсеет minLeadMs, а ЕМИАС на перенос начавшейся
             // записи отвечает ошибкой. Завершаем цель, а не долбим сайт.
             if (t.current && Date.parse(t.current) - now() < (t.minLeadMs || 0)) {
-              const message = `запись на ${String(t.current).slice(0, 16).replace('T', ' ')} уже скоро или прошла — больше не переношу`;
+              const message = `запись на ${String(t.current).slice(0, 16).replace('T', ' ')} уже скоро или прошла, больше не переношу`;
               state.byId[t.id] = { state: 'done', note: message };
               emit('targetDone', { targetId: t.id, title: t.title, message });
               continue;
@@ -435,7 +435,7 @@
             const vf = state.verifyFailedKey[t.id];
             if (vf) {
               if (now() < vf.expiresAt && vf.key === key) {
-                log(`${t.title}: не смогла проверить эту запись — в следующий раз попробую другое окошко`);
+                log(`${t.title}: не смог проверить эту запись, в следующий раз попробую другое окошко`);
                 continue;
               }
               // Либо срок истёк, либо появился другой кандидат — метка не актуальна.

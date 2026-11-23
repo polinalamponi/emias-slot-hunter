@@ -78,7 +78,7 @@
         if (ref.countActiveAppointment > 0) continue;
         if (expired(ref.endTime)) continue;
         if (ref.toDoctor) {
-          const title = ref.toDoctor.specialityName + (ref.toDoctor.doctorFio ? ' — ' + ref.toDoctor.doctorFio : '');
+          const title = ref.toDoctor.specialityName + (ref.toDoctor.doctorFio ? ', ' + ref.toDoctor.doctorFio : '');
           out.push({ id: 'ref:' + ref.id, scenario: 'bookDoctor', title, current: null,
             address: null, place: ref.lpuName || null, deadline: ref.endTime, supported: true, unsupportedReason: null,
             source: {
