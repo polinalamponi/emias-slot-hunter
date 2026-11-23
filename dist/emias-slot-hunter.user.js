@@ -2257,7 +2257,7 @@
       .esh-btn.danger { background: #d64545; color: #fff; border-color: #d64545; }
       .esh-warn { color: #a33; font-size: 12px; }
       .esh-note { color: #666; font-size: 12px; }
-      .esh-note.esh-under { margin: -4px 0 6px 26px; }
+      .esh-note.esh-under { margin: -2px 0 8px; }
       .esh-status-target { margin-bottom: 8px; }
       .esh-status-target p { margin: 2px 0; }
       .esh-thanks { width: 300px; max-width: calc(100vw - 32px); box-sizing: border-box; background: #eef8ee; border: 1px solid #8cc58c; border-radius: 10px; padding: 10px; margin-bottom: 8px; box-shadow: 0 2px 10px rgba(0,0,0,.2); font-size: 13px; color: #222; }
@@ -2711,7 +2711,7 @@
         h('input', { type: 'radio', name: 'mode-' + option.id, checked: form.mode === 'auto', onchange: () => update({ mode: 'auto' }) }),
         h('span', { text: 'сразу, без вопросов' }),
       ]),
-      h('p', { class: 'esh-note esh-under', text: 'О новой удобной записи придёт уведомление в приложении ЕМИАС и на электронную почту, как обычно.' }),
+      h('p', { class: 'esh-note esh-under', text: 'О свежей записи уведомление придёт как обычно: в самом приложении ЕМИАС и на электронную почту.' }),
       h('label', { class: 'esh-row' }, [
         h('input', { type: 'radio', name: 'mode-' + option.id, checked: form.mode === 'confirm', onchange: () => update({ mode: 'confirm' }) }),
         h('span', { text: 'уточнить перед записью' }),
