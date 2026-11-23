@@ -590,3 +590,23 @@ test('мульти-фильтр адреса: включение через + и
   const excl = await t.search({ ...labTarget, addressContains: '-Тестовая' }, { now: NOW, appointments: [] });
   assert.equal(excl.candidates.length, 0);
 });
+
+// Фильтр по фамилии врача: остаются только подходящие врачи; нужного врача нет
+// среди свободных — ждём с понятной заметкой, расписание не запрашиваем.
+test('doctorContains: фильтр по фамилии врача и ожидание, если его нет среди свободных', async () => {
+  const handlers = [
+    ['v5/saOrchestrator/getDoctorsInfo', { ok: true, json: doctorsV5Multi }],
+    ['getAvailableResourceScheduleInfo', { ok: true, json: schedule }],
+  ];
+  const base = { ...doctorTarget, source: { ...doctorTarget.source, needPurpose: false } };
+  const api1 = fakeApi(handlers);
+  await createTargets({ api: api1, filters, util }).search({ ...base, doctorContains: 'петров' }, { now: NOW, appointments: [] });
+  const asked = api1.calls.filter((c) => c.path.includes('getAvailableResourceScheduleInfo')).map((c) => c.body.availableResourceId);
+  assert.equal(asked.length, 1, 'расписание только у подходящего врача');
+
+  const api2 = fakeApi(handlers);
+  const r = await createTargets({ api: api2, filters, util }).search({ ...base, doctorContains: 'Юшков' }, { now: NOW, appointments: [] });
+  assert.equal(r.candidates.length, 0);
+  assert.match(r.notes[0], /Врача «Юшков» сейчас нет среди свободных/);
+  assert.equal(api2.calls.filter((c) => c.path.includes('getAvailableResourceScheduleInfo')).length, 0);
+});

@@ -205,3 +205,8 @@ test('addressMatches: одиночный ключ ведёт себя как п�
   assert.equal(addressMatches('улица Тестовая, д. 2', 'Тестовая, д. 2'), true);
   assert.equal(addressMatches('улица Тестовая, д. 2', 'к. 28'), false);
 });
+
+test('addressMatches: ё и е не различаются', () => {
+  assert.equal(addressMatches('Королёв К.К.', 'королев'), true);
+  assert.equal(addressMatches('Королев К.К.', 'Королёв'), true);
+});

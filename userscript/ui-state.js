@@ -74,6 +74,7 @@
         // Запас на дорогу между записями — всегда (см. travelOk в core/filters.js):
         // галку в мастере убрали, снимать её смысла нет.
         respectTravel: true,
+        doctorContains: (form.doctorContains || '').trim() || null,
         travelMs: 60 * 60000,
         minLeadMs: 2 * 60 * 60000,
         // По умолчанию после первой записи останавливаемся: время приёма не
@@ -118,6 +119,7 @@
       else if (t.timeFrom) parts.push(`время после ${t.timeFrom}`);
       else if (t.timeTo) parts.push(`время до ${t.timeTo}`);
       if (t.addressContains) parts.push(`адрес: ${t.addressContains}`);
+      if (t.doctorContains) parts.push(`врач: ${t.doctorContains}`);
       if (t.prefer) {
         let preferText = `сначала предпочитаю до ${dayHuman(t.prefer.until)}`;
         if (t.prefer.timeTo) preferText += `, до ${t.prefer.timeTo}`;
@@ -196,6 +198,7 @@
     // применяются, даже если человек успел их заполнить.
     function normalizeForm(form) {
       const f = { ...(form || {}) };
+      if (f.doctor !== 'byName') f.doctorContains = '';
       if (f.when === 'range') {
         if (f.dateFrom && f.dateFrom === f.dateTo) { f.when = 'onlyDay'; f.day = f.dateFrom; f.dateFrom = ''; f.dateTo = ''; }
       } else {

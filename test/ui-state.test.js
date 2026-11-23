@@ -266,3 +266,12 @@ test('describeTarget: «с 18:00 до 09:00» — «после 18:00 или до
   const t = ui.buildTarget({ ...option, current: null }, { when: 'earlier', where: 'any', mode: 'auto', timeFrom: '18:00', timeTo: '09:00' });
   assert.match(ui.describeTarget(t), /время после 18:00 или до 09:00/);
 });
+
+test('врач по фамилии: только если выбран пункт «фамилия», попадает в описание', () => {
+  const docOption = { ...doctorOption, source: { ...doctorOption.source, needPurpose: false } };
+  const hidden = ui.buildTarget(docOption, { ...ui.normalizeForm({ when: 'earlier', doctor: 'any', doctorContains: 'Иванова' }), where: 'any', mode: 'auto' });
+  assert.equal(hidden.doctorContains, null, 'выбран «любой» — фамилия не применяется');
+  const t = ui.buildTarget(docOption, { ...ui.normalizeForm({ when: 'earlier', doctor: 'byName', doctorContains: ' Иванова ' }), where: 'any', mode: 'auto' });
+  assert.equal(t.doctorContains, 'Иванова');
+  assert.match(ui.describeTarget(t), /врач: Иванова/);
+});

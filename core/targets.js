@@ -127,6 +127,18 @@
         resources = resources.filter((r) => String(r.id) === String(t.source.availableResourceId));
       }
       if (!resources.length) return { candidates: [], rejected: [], notes: ['Свободных окошек сейчас нет'], action: null };
+      // Фильтр по фамилии врача (идея и первая версия — userspoon, PR в его
+      // форке). ЕМИАС отдаёт ФИО как «Петров П.П.», поэтому сравниваем
+      // подстрокой, с тем же синтаксисом «+иванова +петров -сидоров», что у
+      // адреса. Врачей, к которым сейчас нельзя записаться, в этом списке нет
+      // (collectResources их пропускает), так что «нужного врача нет» — это
+      // режим ожидания: появятся окошки — врач появится в списке.
+      if (t.doctorContains) {
+        resources = resources.filter((r) => filters.addressMatches(r.name || '', t.doctorContains));
+        if (!resources.length) {
+          return { candidates: [], rejected: [], notes: [`Врача «${t.doctorContains}» сейчас нет среди свободных, жду, когда у него появятся окошки`], action: null };
+        }
+      }
 
       const candidates = [];
       let rejected = [];

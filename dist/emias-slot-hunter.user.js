@@ -149,7 +149,7 @@
       if (body.startsWith('-')) { neg = true; body = body.slice(1).trim(); }
       else if (body.startsWith('+')) body = body.slice(1).trim();
       if (body.startsWith('"') && body.endsWith('"') && body.length >= 2) body = body.slice(1, -1);
-      body = body.replace(/\s+/g, ' ').trim().toLowerCase();
+      body = body.replace(/\s+/g, ' ').trim().toLowerCase().replace(/ё/g, 'е');
       // Ключ без единой буквы или цифры («---», «+», «;») — не ключ, а мусор.
       if (!body || !/\p{L}|\p{N}/u.test(body)) continue;
       if (neg) out.none.push(body); else out.any.push(body);
@@ -163,7 +163,7 @@
   function addressMatches(address, s) {
     const f = parseAddressFilter(s);
     if (!f.any.length && !f.none.length) return true;
-    const a = String(address || '').toLowerCase();
+    const a = String(address || '').toLowerCase().replace(/ё/g, 'е');
     if (f.none.some((kw) => a.includes(kw))) return false;
     if (!f.any.length) return true;
     return f.any.some((kw) => a.includes(kw));
@@ -723,6 +723,18 @@
         resources = resources.filter((r) => String(r.id) === String(t.source.availableResourceId));
       }
       if (!resources.length) return { candidates: [], rejected: [], notes: ['Свободных окошек сейчас нет'], action: null };
+      // Фильтр по фамилии врача (идея и первая версия — userspoon, PR в его
+      // форке). ЕМИАС отдаёт ФИО как «Петров П.П.», поэтому сравниваем
+      // подстрокой, с тем же синтаксисом «+иванова +петров -сидоров», что у
+      // адреса. Врачей, к которым сейчас нельзя записаться, в этом списке нет
+      // (collectResources их пропускает), так что «нужного врача нет» — это
+      // режим ожидания: появятся окошки — врач появится в списке.
+      if (t.doctorContains) {
+        resources = resources.filter((r) => filters.addressMatches(r.name || '', t.doctorContains));
+        if (!resources.length) {
+          return { candidates: [], rejected: [], notes: [`Врача «${t.doctorContains}» сейчас нет среди свободных, жду, когда у него появятся окошки`], action: null };
+        }
+      }
 
       const candidates = [];
       let rejected = [];
@@ -1821,6 +1833,7 @@
         // Запас на дорогу между записями — всегда (см. travelOk в core/filters.js):
         // галку в мастере убрали, снимать её смысла нет.
         respectTravel: true,
+        doctorContains: (form.doctorContains || '').trim() || null,
         travelMs: 60 * 60000,
         minLeadMs: 2 * 60 * 60000,
         // По умолчанию после первой записи останавливаемся: время приёма не
@@ -1865,6 +1878,7 @@
       else if (t.timeFrom) parts.push(`время после ${t.timeFrom}`);
       else if (t.timeTo) parts.push(`время до ${t.timeTo}`);
       if (t.addressContains) parts.push(`адрес: ${t.addressContains}`);
+      if (t.doctorContains) parts.push(`врач: ${t.doctorContains}`);
       if (t.prefer) {
         let preferText = `сначала предпочитаю до ${dayHuman(t.prefer.until)}`;
         if (t.prefer.timeTo) preferText += `, до ${t.prefer.timeTo}`;
@@ -1943,6 +1957,7 @@
     // применяются, даже если человек успел их заполнить.
     function normalizeForm(form) {
       const f = { ...(form || {}) };
+      if (f.doctor !== 'byName') f.doctorContains = '';
       if (f.when === 'range') {
         if (f.dateFrom && f.dateFrom === f.dateTo) { f.when = 'onlyDay'; f.day = f.dateFrom; f.dateFrom = ''; f.dateTo = ''; }
       } else {
@@ -2668,6 +2683,28 @@
     return h('div', {}, rows);
   }
 
+  // Фильтр по фамилии врача — только там, где врача можно выбирать: запись
+  // к врачу по направлению (если направление не к конкретному врачу) и
+  // перенос записи к врачу.
+  function doctorChoice(option) {
+    return option.scenario === 'shiftDoctor'
+      || (option.scenario === 'bookDoctor' && !(option.source && option.source.availableResourceId));
+  }
+
+  function doctorField(option, form, update, quiet) {
+    const opts = [['any', 'любой'], ['byName', 'фамилия:']];
+    const group = h('div', {}, opts.map(([val, text]) => h('label', { class: 'esh-row' }, [
+      h('input', { type: 'radio', name: 'doctor-' + option.id, checked: (form.doctor || 'any') === val, onchange: () => update({ doctor: val }) }),
+      h('span', { text }),
+    ])));
+    const input = form.doctor === 'byName' ? h('div', {}, [
+      h('input', { type: 'text', value: form.doctorContains || '', placeholder: 'например: Иванова или +иванова +петров',
+        oninput: (e) => quiet({ doctorContains: e.target.value }) }),
+      h('p', { class: 'esh-note', text: 'Если у врача сейчас нет свободных окошек, охотник подождёт, пока они появятся.' }),
+    ]) : null;
+    return h('div', {}, [group, input]);
+  }
+
   function whereField(option, form, update, quiet) {
     const opts = [
       ...(option.address ? [['sameCampus', 'в этом же здании']] : []),
@@ -2705,6 +2742,10 @@
     card.appendChild(whenField(option, form, update, quiet));
     card.appendChild(h('label', { class: 'esh-field', text: '📍 Где' }));
     card.appendChild(whereField(option, form, update, quiet));
+    if (doctorChoice(option)) {
+      card.appendChild(h('label', { class: 'esh-field', text: '🩺 Врач' }));
+      card.appendChild(doctorField(option, form, update, quiet));
+    }
     const purpose = purposeField(option, form, update);
     if (purpose) card.appendChild(purpose);
     card.appendChild(h('label', { class: 'esh-field', text: '✍️ Как записывать' }));
@@ -2743,6 +2784,7 @@
       if (!form.dateFrom && !form.dateTo && !form.timeFrom && !form.timeTo) return 'укажите даты или время';
       if (form.dateFrom && form.dateTo && form.dateFrom > form.dateTo) return 'дата «с» позже даты «по»';
     }
+    if (form.doctor === 'byName' && !(form.doctorContains || '').trim()) return 'укажите фамилию врача';
     if (form.where === 'contains') {
       if (!form.addressContains.trim()) return 'укажите часть адреса';
       // Строка непустая, но осмысленных ключей в ней нет (например, «---» или

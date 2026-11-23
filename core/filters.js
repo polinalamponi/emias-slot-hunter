@@ -43,7 +43,7 @@
       if (body.startsWith('-')) { neg = true; body = body.slice(1).trim(); }
       else if (body.startsWith('+')) body = body.slice(1).trim();
       if (body.startsWith('"') && body.endsWith('"') && body.length >= 2) body = body.slice(1, -1);
-      body = body.replace(/\s+/g, ' ').trim().toLowerCase();
+      body = body.replace(/\s+/g, ' ').trim().toLowerCase().replace(/ё/g, 'е');
       // Ключ без единой буквы или цифры («---», «+», «;») — не ключ, а мусор.
       if (!body || !/\p{L}|\p{N}/u.test(body)) continue;
       if (neg) out.none.push(body); else out.any.push(body);
@@ -57,7 +57,7 @@
   function addressMatches(address, s) {
     const f = parseAddressFilter(s);
     if (!f.any.length && !f.none.length) return true;
-    const a = String(address || '').toLowerCase();
+    const a = String(address || '').toLowerCase().replace(/ё/g, 'е');
     if (f.none.some((kw) => a.includes(kw))) return false;
     if (!f.any.length) return true;
     return f.any.some((kw) => a.includes(kw));

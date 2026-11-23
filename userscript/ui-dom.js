@@ -702,6 +702,28 @@
     return h('div', {}, rows);
   }
 
+  // Фильтр по фамилии врача — только там, где врача можно выбирать: запись
+  // к врачу по направлению (если направление не к конкретному врачу) и
+  // перенос записи к врачу.
+  function doctorChoice(option) {
+    return option.scenario === 'shiftDoctor'
+      || (option.scenario === 'bookDoctor' && !(option.source && option.source.availableResourceId));
+  }
+
+  function doctorField(option, form, update, quiet) {
+    const opts = [['any', 'любой'], ['byName', 'фамилия:']];
+    const group = h('div', {}, opts.map(([val, text]) => h('label', { class: 'esh-row' }, [
+      h('input', { type: 'radio', name: 'doctor-' + option.id, checked: (form.doctor || 'any') === val, onchange: () => update({ doctor: val }) }),
+      h('span', { text }),
+    ])));
+    const input = form.doctor === 'byName' ? h('div', {}, [
+      h('input', { type: 'text', value: form.doctorContains || '', placeholder: 'например: Иванова или +иванова +петров',
+        oninput: (e) => quiet({ doctorContains: e.target.value }) }),
+      h('p', { class: 'esh-note', text: 'Если у врача сейчас нет свободных окошек, охотник подождёт, пока они появятся.' }),
+    ]) : null;
+    return h('div', {}, [group, input]);
+  }
+
   function whereField(option, form, update, quiet) {
     const opts = [
       ...(option.address ? [['sameCampus', 'в этом же здании']] : []),
@@ -739,6 +761,10 @@
     card.appendChild(whenField(option, form, update, quiet));
     card.appendChild(h('label', { class: 'esh-field', text: '📍 Где' }));
     card.appendChild(whereField(option, form, update, quiet));
+    if (doctorChoice(option)) {
+      card.appendChild(h('label', { class: 'esh-field', text: '🩺 Врач' }));
+      card.appendChild(doctorField(option, form, update, quiet));
+    }
     const purpose = purposeField(option, form, update);
     if (purpose) card.appendChild(purpose);
     card.appendChild(h('label', { class: 'esh-field', text: '✍️ Как записывать' }));
@@ -777,6 +803,7 @@
       if (!form.dateFrom && !form.dateTo && !form.timeFrom && !form.timeTo) return 'укажите даты или время';
       if (form.dateFrom && form.dateTo && form.dateFrom > form.dateTo) return 'дата «с» позже даты «по»';
     }
+    if (form.doctor === 'byName' && !(form.doctorContains || '').trim()) return 'укажите фамилию врача';
     if (form.where === 'contains') {
       if (!form.addressContains.trim()) return 'укажите часть адреса';
       // Строка непустая, но осмысленных ключей в ней нет (например, «---» или
