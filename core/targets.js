@@ -126,7 +126,7 @@
       if (t.scenario === 'bookDoctor' && t.source.availableResourceId) {
         resources = resources.filter((r) => String(r.id) === String(t.source.availableResourceId));
       }
-      if (!resources.length) return { candidates: [], rejected: [], notes: ['Свободных кабинетов или врачей сейчас нет'], action: null };
+      if (!resources.length) return { candidates: [], rejected: [], notes: ['Свободных окошек сейчас нет'], action: null };
 
       const candidates = [];
       let rejected = [];
@@ -176,9 +176,9 @@
       }
       const compare = filters.slotComparator(t);
       candidates.sort((a, b) => compare(a.slot, b.slot));
-      if (addressUnknown) notes.push(`Не удалось определить адрес ${addressUnknown} кабинет(ов) в расписании — пропущены`);
-      if (addressMismatch) notes.push(`Кабинетов с другим адресом пропущено: ${addressMismatch}`);
-      if (pausedByBackoff) notes.push('ЕМИАС попросил паузу — часть кабинетов не проверена, продолжу на следующей проверке');
+      if (addressUnknown) notes.push(`Пропущено кабинетов без адреса: ${addressUnknown}`);
+      if (addressMismatch) notes.push(`Пропущено кабинетов по другому адресу: ${addressMismatch}`);
+      if (pausedByBackoff) notes.push('ЕМИАС попросил паузу — остальное проверю в следующий раз');
       return { candidates, rejected, notes, action };
     }
 
@@ -312,12 +312,12 @@
       if (verify.verifyFailed) {
         return {
           ok: true, verified: false, verifyFailed: true,
-          message: 'Не удалось проверить результат: ЕМИАС не отдал список записей. Проверю на следующей проверке.',
+          message: 'Не смогла проверить запись: ЕМИАС не отдал список. Проверю в следующий раз.',
           action: null,
         };
       }
       if (!verify.found) {
-        return { ok: true, verified: false, message: 'ЕМИАС ответил «готово», но в списке записей я этого не вижу — проверьте вручную', action: null };
+        return { ok: true, verified: false, message: 'ЕМИАС ответил «готово», но записи в списке нет — проверьте на сайте', action: null };
       }
       return { ok: true, verified: true, message: 'Готово', newAppointment: verify.found, action: null };
     }

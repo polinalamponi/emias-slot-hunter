@@ -253,7 +253,7 @@ for (const outcome of ['cancelled', 'refused', 'booked', 'restarted']) {
     if (outcome === 'cancelled') {
       assert.equal(writes.length, 0);
       assert.equal(cards.children.length, 0);
-      assert.equal(ui.root.querySelector('.esh-badge').textContent, '🎯 Настроить');
+      assert.equal(ui.root.querySelector('.esh-badge').textContent, '🎯 Настроить охотника');
       assert.ok(![...ui.timers.values()].some((timer) => timer.ms === 7000));
     } else if (outcome === 'restarted') {
       assert.equal(writes.length, 0);
@@ -366,4 +366,30 @@ test('интерфейс: после входа на сайте значок «�
   assert.doesNotMatch(badge(), /Войдите в ЕМИАС/, 'после входа значок сменился сам');
   assert.equal(ui.core.status().running, true, 'поиск из настроек продолжился');
   assert.ok(!watcher(), 'после входа больше не смотрим');
+});
+
+// Сразу после входа сайт кладёт токен, а полис — чуть позже: не мигаем
+// «Не нашла полис», показываем «Проверяю вход…» и ждём полис молча.
+test('интерфейс: после входа не мигает «Не нашла полис», пока сайт догружает полис', async () => {
+  const env = await environment({ mode: 'auto', scenario: 'bookLab' });
+  const realAuth = env.storage.getItem('persist:sessionAuth');
+  const realPersist = env.storage.getItem('persist:persist');
+  env.storage.setItem('persist:sessionAuth', JSON.stringify({ accessToken: 'null', refreshToken: 'null', idToken: 'null', ctime: 'null' }));
+  env.storage.setItem('persist:persist', JSON.stringify({}));
+  const ui = await mountUi(env, { expectRunning: false });
+  const badge = () => ui.root.querySelector('.esh-badge').textContent;
+  const watcher = () => [...ui.timers.values()].find((t) => t.ms === 3000);
+  const flush = async () => { for (let i = 0; i < 5; i++) await new Promise(setImmediate); };
+
+  env.storage.setItem('persist:sessionAuth', realAuth); // вошли, полиса ещё нет
+  watcher().fn();
+  await flush();
+  assert.doesNotMatch(badge(), /полис/, 'не пугаем «Не нашла полис» в первые секунды после входа');
+  assert.match(badge(), /Проверяю вход/);
+
+  env.storage.setItem('persist:persist', realPersist); // сайт догрузил полис
+  watcher().fn();
+  await flush();
+  assert.equal(ui.core.status().running, true, 'поиск продолжился');
+  assert.doesNotMatch(badge(), /Проверяю вход|Войдите/);
 });

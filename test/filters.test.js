@@ -85,6 +85,23 @@ test('travelOk: час на дорогу между разными адреса�
   assert.equal(f.travelOk({ ...args, slot: far }), true);
 });
 
+test('travelOk: запас зависит от места — здание 15 мин, комплекс 30 мин, разные адреса час', () => {
+  // другая запись 12:00–12:30; пробуем слоты, начинающиеся через 10, 20, 40 и 70 минут после неё
+  const at = (min) => ({ startTime: `2026-09-25T${String(12 + Math.floor((30 + min) / 60)).padStart(2, '0')}:${String((30 + min) % 60).padStart(2, '0')}:00+03:00`,
+    endTime: '2026-09-25T15:00:00+03:00' });
+  const check = (otherAddress, min) => f.travelOk({ selfId: null, address: 'улица Тестовая, д. 1, к. 2', slot: at(min), travelMs: 3600000,
+    appointments: [{ id: 9, startTime: '2026-09-25T12:00:00', endTime: '2026-09-25T12:30:00', lpuAddress: otherAddress }] });
+  // то же здание
+  assert.equal(check('улица Тестовая, д. 1, к. 2', 10), false);
+  assert.equal(check('улица Тестовая, д. 1, к. 2', 20), true);
+  // тот же комплекс, другой корпус
+  assert.equal(check('улица Тестовая, д. 1, к. 5', 20), false);
+  assert.equal(check('улица Тестовая, д. 1, к. 5', 40), true);
+  // другой адрес
+  assert.equal(check('улица Другая, д. 2', 40), false);
+  assert.equal(check('улица Другая, д. 2', 70), true);
+});
+
 test('travelOk игнорирует саму переносимую запись', () => {
   const appts = [{ id: 9, startTime: '2026-09-25T12:00:00', endTime: '2026-09-25T12:30:00', lpuAddress: 'улица Другая, д. 2' }];
   const slot9 = { startTime: '2026-09-25T12:45:00+03:00', endTime: '2026-09-25T13:00:00+03:00' };

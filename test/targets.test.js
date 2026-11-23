@@ -100,7 +100,7 @@ test('act сообщает, если ЕМИАС ответил ok, но запи
   const r = await t.act(labTarget, cand, { now: NOW, appointments: [] });
   assert.equal(r.ok, true);
   assert.equal(r.verified, false);
-  assert.match(r.message, /не вижу/i);
+  assert.match(r.message, /записи в списке нет/i);
 });
 
 // ---- Раунд правок 1: тесты на найденные ревью критические и важные замечания ----

@@ -128,7 +128,7 @@
         t.source = { ...t.source, appointmentId: a.id, moId: a.lpuId || t.source.moId };
         t.scenario = 'shiftLab';
       }
-      log(`${t.title}: по направлению уже есть запись на ${when} — ищу слот раньше и переношу`);
+      log(`${t.title}: по направлению уже есть запись на ${when} — ищу раньше и перенесу`);
       // Обвязка сохраняет цели отдельно (см. C1 в finish()), поэтому новые
       // current/source/scenario отдаём событием, как и после своей записи.
       emit('targetUpdated', { targetId: t.id, title: t.title, current: t.current, source: t.source, scenario: t.scenario });
@@ -150,12 +150,12 @@
         w.push(`Адрес «${best.address}» не подошёл под фильтр «${t.addressContains}»`);
       }
       if (best && t.current && !t.anyTime && !t.near && new Date(best.slot.startTime) > new Date(t.current)) {
-        w.push('Найденный слот позже текущей записи');
+        w.push('Найденное окошко позже текущей записи');
       }
       if (!best && r.rejected.length) {
         const why = {};
         for (const x of r.rejected) why[x.reason] = (why[x.reason] || 0) + 1;
-        w.push('Слоты есть, но все отброшены: ' + Object.entries(why).map(([k, v]) => `${k} (${v})`).join(', '));
+        w.push('Окошки есть, но не подошли: ' + Object.entries(why).map(([k, v]) => `${k} (${v})`).join(', '));
       }
       if (best) {
         const sameDay = appts.filter((a) => a.startTime.slice(0, 10) === best.slot.startTime.slice(0, 10));
@@ -342,7 +342,7 @@
       delete state.pending[targetId];
       if (!p) return { ok: false, message: 'решение уже не актуально' };
       if (decision !== 'book') {
-        log(`${p.target.title}: пользователь отклонил слот`);
+        log(`${p.target.title}: вы пропустили это окошко`);
         return { ok: false };
       }
       return finish(p.target, p.candidate, runId);
@@ -432,7 +432,7 @@
             const vf = state.verifyFailedKey[t.id];
             if (vf) {
               if (now() < vf.expiresAt && vf.key === key) {
-                log(`${t.title}: пропускаю тот же слот после неудачной проверки, попробую другой на следующем тике`);
+                log(`${t.title}: не смогла проверить эту запись — в следующий раз попробую другое окошко`);
                 continue;
               }
               // Либо срок истёк, либо появился другой кандидат — метка не актуальна.
@@ -471,7 +471,7 @@
       }
 
       for (const [id, p] of Object.entries(state.pending)) {
-        if (now() > p.expiresAt) { delete state.pending[id]; log('подтверждение не получено, слот пропущен'); }
+        if (now() > p.expiresAt) { delete state.pending[id]; log('ответа не было, окошко пропущено'); }
       }
 
       schedule();

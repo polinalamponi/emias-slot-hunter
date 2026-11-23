@@ -146,7 +146,7 @@ test('buildTarget: «искать ещё раньше» включает keepImp
   assert.equal(lab.keepImproving, true);
   assert.equal(doctor.keepImproving, true);
   assert.equal(referral.keepImproving, false);
-  assert.match(ui.describeTarget(lab), /после записи ищу ещё раньше и переношу/);
+  assert.match(ui.describeTarget(lab), /после записи ищу раньше и переношу/);
 });
 
 // ---- Task 12b: bookDoctor — цель визита ----

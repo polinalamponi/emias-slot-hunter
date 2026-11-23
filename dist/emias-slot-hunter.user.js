@@ -71,12 +71,12 @@
       .replace(/\b[А-ЯЁ][а-яё]+\s+[А-ЯЁ][а-яё]+(вич|вна|ична)\b/g, '<ФИО>');
 
     const KNOWN = {
-      SA_SAME_BM_IS_NOT_AVAILABLE: { message: 'Вы уже записаны на это исследование — перехожу в режим переноса.', action: 'switchToShift' },
+      SA_SAME_BM_IS_NOT_AVAILABLE: { message: 'Вы уже записаны на это исследование — буду переносить запись раньше.', action: 'switchToShift' },
       SA_REFERRAL_EXPIRED: { message: 'Направление истекло — цель отключена.', action: 'stopTarget' },
       SA_APPOINTMENT_NOT_FOUND: { message: 'Запись не найдена: возможно, её отменили или перенесли в другом месте.', action: 'stopTarget' },
       // Живой ответ ЕМИАС и на перенос уже начавшейся записи, и на приём
       // без направления (ЦЖЗ), который сайт этим путём переносить не даёт.
-      SA_APPOINTMENT_CANNOT_BE_CANCELED: { message: 'ЕМИАС не даёт перенести эту запись: приём уже начался, запись отменена или такой перенос сайт не разрешает. Цель остановлена.', action: 'stopTarget' },
+      SA_APPOINTMENT_CANNOT_BE_CANCELED: { message: 'ЕМИАС не даёт перенести эту запись: приём начался, запись отменена или перенос запрещён. Цель остановлена.', action: 'stopTarget' },
     };
 
     function explain({ status, code, text }) {
@@ -89,7 +89,7 @@
       // explain() напрямую (см. test/errors.test.js) и на случай, если этот
       // порядок обработки 401 в api.js когда-нибудь изменится — тест ниже
       // прямо помечен как проверка explain() в изоляции, а не сквозного пути.
-      if (status === 401) return { message: 'ЕМИАС перестал принимать вход. Войдите заново в другой вкладке — поиск продолжится сам.', action: 'relogin' };
+      if (status === 401) return { message: 'Вход в ЕМИАС закончился. Войдите заново — поиск продолжится сам.', action: 'relogin' };
       if (status === 429) return { message: 'ЕМИАС просит не частить — пауза 30 секунд.', action: 'wait' };
       if (status >= 500) return { message: 'ЕМИАС временно отвечает ошибкой — пауза 30 секунд.', action: 'wait' };
       return { message: 'Непонятный ответ ЕМИАС: ' + mask(text).slice(0, 300), action: 'retry' };
@@ -191,8 +191,20 @@
       return (a, b) => preferred(a) - preferred(b) || toMs(a.startTime) - toMs(b.startTime);
     }
 
-    // Можно ли занять слот, не нарушив другие записи того же дня: между записями
-    // в разных кампусах нужен запас travelMs на дорогу, в одном и том же — можно впритык.
+    // Можно ли занять слот, не нарушив другие записи того же дня. Запас между
+    // записями зависит от того, где они: в одном здании — 15 минут (приём
+    // часто задерживается), в одном комплексе, но в разных корпусах — 30
+    // минут (дойти между корпусами), по разным адресам — travelMs (час на
+    // дорогу). Пересекаться записи не могут нигде.
+    const SAME_BUILDING_GAP_MS = 15 * 60000;
+    const SAME_CAMPUS_GAP_MS = 30 * 60000;
+    const building = (addr) => String(addr || '').trim().toLowerCase().replace(/\s+/g, ' ');
+    function travelGap(a, b, travelMs) {
+      if (building(a) && building(a) === building(b)) return SAME_BUILDING_GAP_MS;
+      if (campus(a) && campus(a) === campus(b)) return SAME_CAMPUS_GAP_MS;
+      return travelMs;
+    }
+
     function travelOk({ selfId, address, slot, appointments, travelMs }) {
       const s = toMs(slot.startTime);
       const e = toMs(slot.endTime);
@@ -200,7 +212,7 @@
       for (const a of appointments || []) {
         if (selfId != null && a.id === selfId) continue;
         if (a.startTime.slice(0, 10) !== day) continue;
-        const gap = campus(a.lpuAddress) === campus(address) ? 0 : travelMs;
+        const gap = travelGap(a.lpuAddress, address, travelMs);
         if (s < toMs(a.endTime) + gap && e > toMs(a.startTime) - gap) return false;
       }
       return true;
@@ -425,7 +437,7 @@
       // техническим языком — и той же формулировкой, что уже даёт errors.js
       // для 401 (см. explain()), чтобы текст не расходился в зависимости от
       // того, через какой путь сессия оказалась потеряна.
-      if (r.status === 401) throw new SessionError('Вход в ЕМИАС закончился. Войдите заново в другой вкладке — поиск продолжится сам.');
+      if (r.status === 401) throw new SessionError('Вход в ЕМИАС закончился. Войдите заново — поиск продолжится сам.');
       // 429 и 5xx ошибки требуют паузу
       if (r.status === 429 || r.status >= 500) backoffUntil = now() + 30000;
 
@@ -514,7 +526,7 @@
           // Непонятную запись не прячем: человек должен видеть, что скрипт её
           // заметил, но пока не умеет с ней работать.
           out.push({ id: 'appt:' + a.id, scenario: 'unknownAppointment', title: 'Запись', ...common,
-            supported: false, unsupportedReason: 'Такую запись скрипт пока не умеет переносить',
+            supported: false, unsupportedReason: 'Такую запись охотник пока не переносит',
             source: { appointmentId: a.id } });
         }
       }
@@ -566,7 +578,7 @@
         const title = 'Направление';
         out.push({ id: 'ref:' + ref.id, scenario: 'bookReferral', title, current: null,
           address: null, place: ref.lpuName || null, deadline: ref.endTime, supported: false,
-          unsupportedReason: 'Новая запись по такому направлению появится в следующей версии',
+          unsupportedReason: 'По такому направлению охотник пока не записывает',
           source: { referralId: ref.id, lpuId: ref.lpuId } });
       }
 
@@ -710,7 +722,7 @@
       if (t.scenario === 'bookDoctor' && t.source.availableResourceId) {
         resources = resources.filter((r) => String(r.id) === String(t.source.availableResourceId));
       }
-      if (!resources.length) return { candidates: [], rejected: [], notes: ['Свободных кабинетов или врачей сейчас нет'], action: null };
+      if (!resources.length) return { candidates: [], rejected: [], notes: ['Свободных окошек сейчас нет'], action: null };
 
       const candidates = [];
       let rejected = [];
@@ -760,9 +772,9 @@
       }
       const compare = filters.slotComparator(t);
       candidates.sort((a, b) => compare(a.slot, b.slot));
-      if (addressUnknown) notes.push(`Не удалось определить адрес ${addressUnknown} кабинет(ов) в расписании — пропущены`);
-      if (addressMismatch) notes.push(`Кабинетов с другим адресом пропущено: ${addressMismatch}`);
-      if (pausedByBackoff) notes.push('ЕМИАС попросил паузу — часть кабинетов не проверена, продолжу на следующей проверке');
+      if (addressUnknown) notes.push(`Пропущено кабинетов без адреса: ${addressUnknown}`);
+      if (addressMismatch) notes.push(`Пропущено кабинетов по другому адресу: ${addressMismatch}`);
+      if (pausedByBackoff) notes.push('ЕМИАС попросил паузу — остальное проверю в следующий раз');
       return { candidates, rejected, notes, action };
     }
 
@@ -896,12 +908,12 @@
       if (verify.verifyFailed) {
         return {
           ok: true, verified: false, verifyFailed: true,
-          message: 'Не удалось проверить результат: ЕМИАС не отдал список записей. Проверю на следующей проверке.',
+          message: 'Не смогла проверить запись: ЕМИАС не отдал список. Проверю в следующий раз.',
           action: null,
         };
       }
       if (!verify.found) {
-        return { ok: true, verified: false, message: 'ЕМИАС ответил «готово», но в списке записей я этого не вижу — проверьте вручную', action: null };
+        return { ok: true, verified: false, message: 'ЕМИАС ответил «готово», но записи в списке нет — проверьте на сайте', action: null };
       }
       return { ok: true, verified: true, message: 'Готово', newAppointment: verify.found, action: null };
     }
@@ -1045,7 +1057,7 @@
         t.source = { ...t.source, appointmentId: a.id, moId: a.lpuId || t.source.moId };
         t.scenario = 'shiftLab';
       }
-      log(`${t.title}: по направлению уже есть запись на ${when} — ищу слот раньше и переношу`);
+      log(`${t.title}: по направлению уже есть запись на ${when} — ищу раньше и перенесу`);
       // Обвязка сохраняет цели отдельно (см. C1 в finish()), поэтому новые
       // current/source/scenario отдаём событием, как и после своей записи.
       emit('targetUpdated', { targetId: t.id, title: t.title, current: t.current, source: t.source, scenario: t.scenario });
@@ -1067,12 +1079,12 @@
         w.push(`Адрес «${best.address}» не подошёл под фильтр «${t.addressContains}»`);
       }
       if (best && t.current && !t.anyTime && !t.near && new Date(best.slot.startTime) > new Date(t.current)) {
-        w.push('Найденный слот позже текущей записи');
+        w.push('Найденное окошко позже текущей записи');
       }
       if (!best && r.rejected.length) {
         const why = {};
         for (const x of r.rejected) why[x.reason] = (why[x.reason] || 0) + 1;
-        w.push('Слоты есть, но все отброшены: ' + Object.entries(why).map(([k, v]) => `${k} (${v})`).join(', '));
+        w.push('Окошки есть, но не подошли: ' + Object.entries(why).map(([k, v]) => `${k} (${v})`).join(', '));
       }
       if (best) {
         const sameDay = appts.filter((a) => a.startTime.slice(0, 10) === best.slot.startTime.slice(0, 10));
@@ -1259,7 +1271,7 @@
       delete state.pending[targetId];
       if (!p) return { ok: false, message: 'решение уже не актуально' };
       if (decision !== 'book') {
-        log(`${p.target.title}: пользователь отклонил слот`);
+        log(`${p.target.title}: вы пропустили это окошко`);
         return { ok: false };
       }
       return finish(p.target, p.candidate, runId);
@@ -1349,7 +1361,7 @@
             const vf = state.verifyFailedKey[t.id];
             if (vf) {
               if (now() < vf.expiresAt && vf.key === key) {
-                log(`${t.title}: пропускаю тот же слот после неудачной проверки, попробую другой на следующем тике`);
+                log(`${t.title}: не смогла проверить эту запись — в следующий раз попробую другое окошко`);
                 continue;
               }
               // Либо срок истёк, либо появился другой кандидат — метка не актуальна.
@@ -1388,7 +1400,7 @@
       }
 
       for (const [id, p] of Object.entries(state.pending)) {
-        if (now() > p.expiresAt) { delete state.pending[id]; log('подтверждение не получено, слот пропущен'); }
+        if (now() > p.expiresAt) { delete state.pending[id]; log('ответа не было, окошко пропущено'); }
       }
 
       schedule();
@@ -1806,7 +1818,9 @@
           : form.where === 'contains' ? (form.addressContains || null) : null,
         prefer: form.preferUntil ? { until: form.preferUntil, timeTo: form.preferTimeTo || null } : null,
         near: form.nearStart && form.nearEnd ? { start: form.nearStart, end: form.nearEnd } : null,
-        respectTravel: form.respectTravel !== false,
+        // Запас на дорогу между записями — всегда (см. travelOk в core/filters.js):
+        // галку в мастере убрали, снимать её смысла нет.
+        respectTravel: true,
         travelMs: 60 * 60000,
         minLeadMs: 2 * 60 * 60000,
         // По умолчанию после первой записи останавливаемся: время приёма не
@@ -1857,9 +1871,8 @@
         parts.push(preferText);
       }
       if (t.purpose) parts.push(`цель визита: ${purposeTitle(t.purpose)}`);
-      if (t.respectTravel) parts.push('с запасом на дорогу');
       parts.push(t.mode === 'confirm' ? 'спрашиваю перед записью' : 'записываю сразу');
-      parts.push(t.keepImproving ? 'после записи ищу ещё раньше и переношу' : 'после записи останавливаюсь');
+      parts.push(t.keepImproving ? 'после записи ищу раньше и переношу' : 'после записи останавливаюсь');
 
       // bookDoctor и bookLdp — запись по направлению без текущей записи, для неё
       // отдельная формулировка «Запишу к <специальность> / на <исследование> по
@@ -1875,8 +1888,8 @@
 
     function describeDryRunItem(item) {
       const head = item.waiting
-        ? `${item.title}: подходящих слотов сейчас нет, жду`
-        : `${item.title}: взяла бы ${human(item.would.startTime)} — ${item.would.address}`;
+        ? `${item.title}: подходящих окошек пока нет, жду`
+        : `${item.title}: записала бы на ${human(item.would.startTime)} — ${item.would.address}`;
       const warn = (item.warnings || []).map((w) => `\n  ⚠ ${w}`).join('');
       const notes = (item.notes || []).map((n) => `\n  · ${n}`).join('');
       return head + warn + notes;
@@ -2225,6 +2238,8 @@
       .esh-badge.k-needLogin, .esh-badge.k-needIdentity, .esh-badge.k-sessionLost, .esh-badge.k-stale, .esh-badge.k-resumeError, .esh-badge.k-needDryRun { background: #d64545; }
       .esh-sub { display: block; font-size: 11px; opacity: .85; font-weight: normal; }
       .esh-card { width: 320px; max-width: calc(100vw - 32px); box-sizing: border-box; max-height: 70vh; overflow: auto; background: #fff; color: #222; border-radius: 12px; box-shadow: 0 4px 20px rgba(0,0,0,.3); padding: 14px; }
+      /* На компьютере мастер шире и выше: шаг 2 с несколькими целями иначе превращается в длинную ленту. */
+      @media (min-width: 900px) { .esh-card { width: 440px; max-height: 82vh; padding: 18px; } }
       .esh-card h3 { margin: 0 0 8px; font-size: 16px; }
       .esh-card p { margin: 4px 0; font-size: 13px; line-height: 1.4; }
       .esh-row { display: flex; align-items: center; gap: 8px; margin: 6px 0; }
@@ -2359,7 +2374,7 @@
     clear(dom.panel);
     const isStale = badgeState.kind === 'stale';
     dom.panel.appendChild(h('h3', { text: isStale ? 'Давно нет ответа от ЕМИАС' : 'Нужно войти в ЕМИАС' }));
-    dom.panel.appendChild(h('p', { text: 'Войдите в ЕМИАС в соседней вкладке — поиск продолжится сам, ничего перезапускать не нужно.' }));
+    dom.panel.appendChild(h('p', { text: 'Войдите в ЕМИАС — поиск продолжится сам.' }));
     if (badgeState.detail) dom.panel.appendChild(h('p', { class: 'esh-note', text: badgeState.detail }));
     dom.panel.appendChild(h('div', { class: 'esh-btns' }, [
       h('button', { class: 'esh-btn danger', text: 'Остановить поиск', onclick: onStop }),
@@ -2379,8 +2394,8 @@
     // enabled в настройках.
     dom.panel.appendChild(h('p', {
       text: paused
-        ? 'Когда там нажмут «Запустить охоту», поиск продолжится по новым условиям. Можно и настроить поиск здесь заново.'
-        : 'Чтобы остановить поиск, сделайте это в той вкладке ЕМИАС, где он сейчас работает.',
+        ? 'Когда там запустят охоту, поиск пойдёт по новым условиям. Или настройте здесь.'
+        : 'Остановить поиск можно в той вкладке, где он идёт.',
     }));
     if (note) dom.panel.appendChild(h('p', { class: 'esh-warn', text: note }));
     dom.panel.appendChild(h('div', { class: 'esh-btns' }, [
@@ -2398,7 +2413,7 @@
   async function onContinueHere() {
     clear(dom.panel);
     dom.panel.appendChild(h('h3', { text: 'Поиск идёт в другой вкладке' }));
-    dom.panel.appendChild(h('p', { class: 'esh-note', text: 'Проверяю условия поиска, подождите…' }));
+    dom.panel.appendChild(h('p', { class: 'esh-note', text: 'Проверяю условия…' }));
     let r;
     try {
       r = await startFromSavedConfig();
@@ -2414,7 +2429,7 @@
     } else if (r.status === 'mismatch') {
       showReconfirm(r.cfg, r.report);
     } else if (r.status === 'off') {
-      setBadge({ kind: 'idle', text: '🎯 Настроить', detail: '' });
+      setBadge({ kind: 'idle', text: '🎯 Настроить охотника', detail: '' });
       hidePanel();
     } else if (panelMode === 'standby') {
       renderStandbyPanel();
@@ -2431,7 +2446,7 @@
   function renderLog(events) {
     const box = h('div', { class: 'esh-log' });
     for (const e of events.slice(0, 20)) box.appendChild(h('div', { text: `${hhmm(e.at)} · ${e.msg}` }));
-    if (!events.length) box.appendChild(h('div', { class: 'esh-note', text: 'событий пока нет' }));
+    if (!events.length) box.appendChild(h('div', { class: 'esh-note', text: 'пока пусто' }));
     return box;
   }
 
@@ -2481,7 +2496,7 @@
   function describeState(t) {
     if (t.state === 'stopped') return `остановлено (${t.note || 'причина неизвестна'})`;
     if (t.state === 'done') return 'готово';
-    if (t.state === 'improving') return 'записано, ищу вариант получше';
+    if (t.state === 'improving') return 'записано, ищу раньше';
     return 'проверяю расписание';
   }
 
@@ -2509,7 +2524,7 @@
   function renderLoading(title) {
     clear(dom.panel);
     dom.panel.appendChild(h('h3', { text: title }));
-    dom.panel.appendChild(h('p', { class: 'esh-note', text: 'Спрашиваю ЕМИАС, подождите…' }));
+    dom.panel.appendChild(h('p', { class: 'esh-note', text: 'Загружаю из ЕМИАС…' }));
   }
 
   function renderLoadError(title, message, onRetry) {
@@ -2523,13 +2538,13 @@
 
   /* ==================== шаг 1: выбор направлений и записей ==================== */
   async function loadStep1() {
-    renderLoading('Шаг 1 из 3. За чем следить');
+    renderLoading('Шаг 1 из 3. Что ищем');
     try {
       const options = await core.discover();
       wizard.options = options;
       renderStep1(options);
     } catch (e) {
-      renderLoadError('Шаг 1 из 3. За чем следить', e && e.message, loadStep1);
+      renderLoadError('Шаг 1 из 3. Что ищем', e && e.message, loadStep1);
     }
   }
 
@@ -2566,15 +2581,15 @@
     if (option.current) parts.push('сейчас записано на ' + ui.human(option.current));
     if (option.address) parts.push(ui.stripCampus(option.address));
     else if (option.place) parts.push(option.place);
-    if (option.deadline) parts.push('направление действует по ' + option.deadline.slice(8, 10) + '.' + option.deadline.slice(5, 7));
+    if (option.deadline) parts.push('направление до ' + option.deadline.slice(8, 10) + '.' + option.deadline.slice(5, 7));
     return parts.join(' · ') || 'запись по направлению';
   }
 
   function renderStep1(options) {
     clear(dom.panel);
-    dom.panel.appendChild(h('h3', { text: 'Шаг 1 из 3. За чем следить' }));
+    dom.panel.appendChild(h('h3', { text: 'Шаг 1 из 3. Что ищем' }));
     if (!options.length) {
-      dom.panel.appendChild(h('p', { class: 'esh-note', text: 'Направлений и записей, с которыми можно работать, не найдено.' }));
+      dom.panel.appendChild(h('p', { class: 'esh-note', text: 'Нет направлений и записей, с которыми охотник умеет работать.' }));
     }
     const list = h('div', {}, options.map(renderOptionRow));
     dom.panel.appendChild(list);
@@ -2642,10 +2657,9 @@
       rows.push(range('даты с', input('date', 'dateFrom'), input('date', 'dateTo'), 'по'));
       rows.push(range('время с', input('time', 'timeFrom'), input('time', 'timeTo'), 'до'));
       rows.push(h('p', { class: 'esh-note', text: [
-        'Можно заполнить только даты, только время или и то и другое.',
-        'Один день — одна и та же дата в обоих полях.',
-        'Время: только вечером — с 18:00, только утром — до 9:00, до и после работы — с 18:00 до 9:00.',
-        ...(option.current ? ['Если указаны даты, перенесу в эти дни, даже если они позже текущей записи.'] : []),
+        'Можно только даты, только время или оба. Один день — одна дата в обоих полях.',
+        '«С 18:00 до 9:00» — до или после работы.',
+        ...(option.current ? ['С датами перенесу в эти дни, даже если они позже текущей записи.'] : []),
       ].join(' ') }));
     }
     return h('div', {}, rows);
@@ -2668,7 +2682,7 @@
       }),
       h('p', {
         class: 'esh-note',
-        text: 'Можно несколько: каждый вариант начните с «+», а то, что исключить, — с «-». Например: +знамя труда +остафьево -шишкин. Подойдёт адрес с любым из «+» и без всех «-». Пробел внутри варианта его не делит.',
+        text: 'Несколько вариантов: «+» — подходит, «-» — исключить. Например: +знамя труда +остафьево -шишкин',
       }),
     ]) : null;
     return h('div', {}, [group, addrInput]);
@@ -2690,10 +2704,6 @@
     card.appendChild(whereField(option, form, update, quiet));
     const purpose = purposeField(option, form, update);
     if (purpose) card.appendChild(purpose);
-    card.appendChild(h('label', { class: 'esh-row' }, [
-      h('input', { type: 'checkbox', checked: form.respectTravel, onchange: (e) => update({ respectTravel: e.target.checked }) }),
-      h('span', { text: 'Учитывать время на дорогу между записями' }),
-    ]));
     card.appendChild(h('label', { class: 'esh-field', text: '✍️ Как записывать' }));
     card.appendChild(h('div', {}, [
       h('label', { class: 'esh-row' }, [
@@ -2704,7 +2714,7 @@
         h('input', { type: 'radio', name: 'mode-' + option.id, checked: form.mode === 'confirm', onchange: () => update({ mode: 'confirm' }) }),
         h('span', { text: 'сначала спрашивать' }),
       ]),
-      h('p', { class: 'esh-note', text: 'О записи сообщит сам ЕМИАС — push в приложении ЕМИАС на телефоне и письмо на почту, как при обычной записи. Сидеть у компьютера не нужно. В режиме «сначала спрашивать» на ответ 60 секунд, и спросить скрипт может только в этой вкладке.' }),
+      h('p', { class: 'esh-note', text: 'О записи сообщит ЕМИАС: push в приложении и письмо, как обычно. Если спрашивать — на ответ 60 секунд, вопрос появится в этой вкладке.' }),
     ]));
     card.appendChild(h('label', { class: 'esh-field', text: '🏁 После записи' }));
     card.appendChild(h('div', {}, [
@@ -2714,7 +2724,7 @@
       ]),
       h('label', { class: 'esh-row' }, [
         h('input', { type: 'radio', name: 'after-' + option.id, checked: form.afterBooking === 'improve', onchange: () => update({ afterBooking: 'improve' }) }),
-        h('span', { text: 'искать ещё раньше и переносить запись' }),
+        h('span', { text: 'искать раньше и переносить' }),
       ]),
     ]));
     const error = stepTwoError(option, form);
@@ -2737,7 +2747,7 @@
       // тогда считаем непустую строку валидной.
       const { parseAddressFilter } = globalThis.EmiasCore || {};
       const f = parseAddressFilter ? parseAddressFilter(form.addressContains) : { any: ['x'], none: [] };
-      if (!f.any.length && !f.none.length) return 'укажите хотя бы один ключ адреса';
+      if (!f.any.length && !f.none.length) return 'укажите адрес';
     }
     return null;
   }
@@ -2755,7 +2765,7 @@
 
   function renderStep2(selected) {
     clear(dom.panel);
-    dom.panel.appendChild(h('h3', { text: 'Шаг 2 из 3. Условия поиска' }));
+    dom.panel.appendChild(h('h3', { text: 'Шаг 2 из 3. Условия' }));
     dom.panel.appendChild(h('div', {}, selected.map(renderTargetCard)));
     const hasErrors = selected.some((o) => stepTwoError(o, ensureForm(o)));
     const back = h('button', { class: 'esh-btn', text: 'Назад', onclick: backToStep1 });
@@ -2779,7 +2789,7 @@
 
   /* ==================== шаг 3: холостой прогон и запуск ==================== */
   async function loadStep3() {
-    renderLoading('Шаг 3 из 3. Проверка перед запуском');
+    renderLoading('Шаг 3 из 3. Проверка');
     wizard.builtTargets = wizard.selected.map((o) => ui.buildTarget(o, ui.normalizeForm(ensureForm(o))));
     core.setTargets(wizard.builtTargets);
     try {
@@ -2787,7 +2797,7 @@
       wizard.checked = false;
       renderStep3(wizard.report);
     } catch (e) {
-      renderLoadError('Шаг 3 из 3. Проверка перед запуском', e && e.message, loadStep3);
+      renderLoadError('Шаг 3 из 3. Проверка', e && e.message, loadStep3);
     }
   }
 
@@ -2805,14 +2815,14 @@
 
   function renderStep3(report) {
     clear(dom.panel);
-    dom.panel.appendChild(h('h3', { text: 'Шаг 3 из 3. Проверка перед запуском' }));
-    dom.panel.appendChild(h('p', { class: 'esh-note', text: 'Это холостой прогон: скрипт проверил расписание и показывает, что сделал бы прямо сейчас. Ничего не записано и не перенесено.' }));
+    dom.panel.appendChild(h('h3', { text: 'Шаг 3 из 3. Проверка' }));
+    dom.panel.appendChild(h('p', { class: 'esh-note', text: 'Холостой прогон: что охотник сделал бы прямо сейчас. Ничего не записано.' }));
     dom.panel.appendChild(h('div', {}, report.items.map(renderReportItem)));
     const checkbox = h('input', {
       type: 'checkbox', checked: wizard.checked,
       onchange: (e) => { wizard.checked = e.target.checked; renderStep3(wizard.report); },
     });
-    dom.panel.appendChild(h('label', { class: 'esh-row' }, [checkbox, h('span', { text: 'Я проверил(а) результаты холостого прогона' })]));
+    dom.panel.appendChild(h('label', { class: 'esh-row' }, [checkbox, h('span', { text: 'Я проверил(а), всё верно' })]));
     const btns = [];
     if (wizard.selected.length) btns.push(h('button', { class: 'esh-btn', text: 'Назад', onclick: () => openWizard(2) }));
     btns.push(h('button', { class: 'esh-btn primary', text: 'Запустить охоту', disabled: !wizard.checked, onclick: onStart }));
@@ -2823,9 +2833,9 @@
   function renderStep4() {
     clear(dom.panel);
     dom.panel.appendChild(h('h3', { text: 'Готово' }));
-    dom.panel.appendChild(h('p', {}, 'Слежу за расписанием — можете заниматься своими делами. Пока идёт поиск, на значке 👀, а когда запишу — ✅ и придёт уведомление от ЕМИАС.'));
+    dom.panel.appendChild(h('p', {}, 'Ищу — можете заниматься своими делами. Когда запишу, значок станет ✅ и придёт уведомление от ЕМИАС.'));
     const titles = (wizard.builtTargets || []).map((t) => t.title).join(', ');
-    if (titles) dom.panel.appendChild(h('p', { class: 'esh-note', text: 'Слежу за: ' + titles }));
+    if (titles) dom.panel.appendChild(h('p', { class: 'esh-note', text: 'Ищу: ' + titles }));
     dom.panel.appendChild(h('div', { class: 'esh-btns' }, [
       h('button', { class: 'esh-btn primary', text: 'Понятно', onclick: hidePanel }),
     ]));
@@ -2836,7 +2846,7 @@
     // всё же попали с испорченным состоянием мастера) — без неё в настройки
     // тихо сохранился бы targets: [] при зелёном значке.
     if (!wizard.builtTargets || !wizard.builtTargets.length) {
-      renderLoadError('Шаг 3 из 3. Проверка перед запуском', 'Список целей пуст — нечего запускать. Начните заново с шага 1.', () => openWizardGuarded(1));
+      renderLoadError('Шаг 3 из 3. Проверка', 'Ничего не выбрано. Вернитесь к шагу 1.', () => openWizardGuarded(1));
       return;
     }
     try {
@@ -2848,11 +2858,11 @@
       runningFor = wizard.report.targetsHash;
       // Minor: сразу после старта проверок ещё не было — не выдумываем время
       // последней проверки.
-      setBadge({ kind: 'running', text: '👀 Ищу слоты', detail: 'первая проверка через минуту' });
+      setBadge({ kind: 'running', text: '👀 Ищу слоты', detail: 'первая проверка через полминуты' });
       startStatusRefresh();
       openWizard(4);
     } catch (e) {
-      renderLoadError('Шаг 3 из 3. Проверка перед запуском', e && e.message, () => renderStep3(wizard.report));
+      renderLoadError('Шаг 3 из 3. Проверка', e && e.message, () => renderStep3(wizard.report));
     }
   }
 
@@ -2866,7 +2876,7 @@
     clearAllConfirmCards(); // I6: живые карточки «спросить» после остановки не нужны
     const cfg = ui.loadConfig(storage) || {};
     ui.saveConfig(storage, { ...cfg, enabled: false });
-    setBadge({ kind: 'idle', text: '🎯 Настроить', detail: '' });
+    setBadge({ kind: 'idle', text: '🎯 Настроить охотника', detail: '' });
     hidePanel();
   }
 
@@ -2975,7 +2985,7 @@
       const res = await core.answer(targetId, 'book');
       cancelled = !!(res && res.cancelled);
       if (!cancelled && (!res || !res.ok || !res.verified)) {
-        failText = (res && res.message) || 'слот уже не актуален';
+        failText = (res && res.message) || 'окошко уже заняли';
         alreadyLogged = (foundCount[targetId] || 0) > foundBefore;
       }
     } catch (e) {
@@ -3025,7 +3035,7 @@
     if (badgeNote && Date.now() < badgeNote.until) return badgeNote.text;
     badgeNote = null;
     const t = core.status().lastCheckAt;
-    return t ? 'проверено в ' + hhmm(t) : 'первая проверка через минуту';
+    return t ? 'проверено в ' + hhmm(t) : 'первая проверка через полминуты';
   }
 
   /* ==================== события ядра ==================== */
@@ -3041,9 +3051,9 @@
   // раздел «Полисы ОМС»).
   function initErrorBadge(e) {
     if (e && e.name === 'IdentityError') {
-      return { kind: 'needIdentity', text: '🔒 Не нашла полис и дату рождения', detail: 'Откройте на сайте раздел «Полисы ОМС», дождитесь загрузки и нажмите ещё раз' };
+      return { kind: 'needIdentity', text: '🔒 Не нашла полис и дату рождения', detail: 'откройте на сайте «Полисы ОМС» — дальше продолжу сам' };
     }
-    return { kind: 'needLogin', text: '🔒 Войдите в ЕМИАС', detail: e && e.message };
+    return { kind: 'needLogin', text: '🔒 Войдите в ЕМИАС', detail: 'после входа продолжу сам' };
   }
 
   // Если в настройках поиск включён и не на паузе, после входа просто
@@ -3054,10 +3064,13 @@
   // ЕМИАС» сам не узнавал о входе — только по клику. Пока горит такой значок,
   // раз в 3 секунды смотрим в хранилище сайта (без запросов в ЕМИАС): как
   // только данные входа изменились, тихо пробуем ещё раз. Мастер при этом сам
-  // не открываем — значок просто становится «🎯 Настроить» или поиск
+  // не открываем — значок просто становится «🎯 Настроить охотника» или поиск
   // продолжается, если был включён.
   const LOGIN_WATCH_MS = 3000;
-  const loginWatch = { id: null, snapshot: null, busy: false };
+  // Сразу после входа сайт сначала кладёт токен, а полис — чуть позже. Чтобы
+  // не мигать «Не нашла полис», первые секунды после входа ждём молча.
+  const IDENTITY_GRACE_MS = 15000;
+  const loginWatch = { id: null, snapshot: null, busy: false, identitySince: 0 };
 
   function loginSnapshot() {
     try { return String(storage.getItem('persist:sessionAuth')) + '|' + String(storage.getItem('persist:persist')); } catch (e) { return ''; }
@@ -3067,12 +3080,18 @@
     const waiting = badgeState.kind === 'needLogin' || badgeState.kind === 'needIdentity';
     if (!waiting) {
       if (loginWatch.id) { clearInterval(loginWatch.id); loginWatch.id = null; }
+      loginWatch.identitySince = 0;
       return;
     }
     if (loginWatch.id) return;
     loginWatch.snapshot = loginSnapshot();
     loginWatch.id = setInterval(() => {
       if (loginWatch.busy) return;
+      if (loginWatch.identitySince && Date.now() - loginWatch.identitySince >= IDENTITY_GRACE_MS && badgeState.kind === 'needLogin') {
+        loginWatch.identitySince = 0;
+        setBadge(initErrorBadge({ name: 'IdentityError' }));
+        return;
+      }
       const now = loginSnapshot();
       if (now === loginWatch.snapshot) return;
       loginWatch.snapshot = now;
@@ -3080,9 +3099,18 @@
       core.init().then(() => {
         const cfg = ui.loadConfig(storage);
         if (cfg && cfg.enabled && !cfg.paused && Array.isArray(cfg.targets) && cfg.targets.length) return resumeIfEnabled();
-        setBadge({ kind: 'idle', text: '🎯 Настроить', detail: '' });
+        setBadge({ kind: 'idle', text: '🎯 Настроить охотника', detail: '' });
         return null;
       }).catch((e) => {
+        // Вход уже есть, а полиса в хранилище ещё нет — обычно он появится
+        // через пару секунд. Значок «Войдите» пока не трогаем.
+        if (e && e.name === 'IdentityError' && badgeState.kind === 'needLogin') {
+          if (!loginWatch.identitySince) {
+            loginWatch.identitySince = Date.now();
+            setBadge({ kind: 'needLogin', text: '⏳ Проверяю вход…', detail: '' });
+          }
+          return;
+        }
         const next = initErrorBadge(e);
         if (next.kind !== badgeState.kind || next.detail !== badgeState.detail) setBadge(next);
       }).finally(() => { loginWatch.busy = false; });
@@ -3093,7 +3121,7 @@
     core.init().then(() => {
       const cfg = ui.loadConfig(storage);
       if (cfg && cfg.enabled && !cfg.paused && Array.isArray(cfg.targets) && cfg.targets.length) { resumeIfEnabled(); return; }
-      setBadge({ kind: 'idle', text: '🎯 Настроить', detail: '' });
+      setBadge({ kind: 'idle', text: '🎯 Настроить охотника', detail: '' });
       openWizardGuarded(1);
     }).catch((e) => setBadge(initErrorBadge(e)));
   }
@@ -3212,7 +3240,7 @@
   function onSessionLost(payload) {
     // Minor: текст payload.message раньше нигде не показывался — теперь он
     // идёт в пояснение к значку (и в панель объяснения, см. renderRecoveryPanel).
-    setBadge({ kind: 'sessionLost', text: '🔴 Нужно войти в другой вкладке', detail: (payload && payload.message) || '' });
+    setBadge({ kind: 'sessionLost', text: '🔴 Войдите в ЕМИАС заново', detail: (payload && payload.message) || '' });
     startRecoveryWatch();
   }
 
@@ -3292,7 +3320,7 @@
     stopRecoveryWatch();
     clearAllConfirmCards();
     if (!cfg || !cfg.enabled) {
-      setBadge({ kind: 'idle', text: '🎯 Настроить', detail: 'поиск остановили в другой вкладке' });
+      setBadge({ kind: 'idle', text: '🎯 Настроить охотника', detail: 'поиск остановили в другой вкладке' });
       if (panelMode === 'status' || panelMode === 'recovery') hidePanel();
       return true;
     }
@@ -3354,7 +3382,7 @@
         // придерживать гейтом лидера ниже.
         clearInterval(standbyRetryId);
         standbyRetryId = null;
-        setBadge({ kind: 'idle', text: '🎯 Настроить', detail: '' });
+        setBadge({ kind: 'idle', text: '🎯 Настроить охотника', detail: '' });
         if (panelMode === 'standby') hidePanel();
         return;
       }
@@ -3426,7 +3454,7 @@
   // wizard.selected и стёрли бы их в core.setTargets([]).
   // I-2: значок при этом не должен оставаться зелёным — поиск не идёт.
   function showReconfirm(cfg, report) {
-    setBadge({ kind: 'needDryRun', text: '🔴 Подтвердите условия заново', detail: 'поиск не идёт, пока вы не подтвердите' });
+    setBadge({ kind: 'needDryRun', text: '🔴 Подтвердите условия заново', detail: 'поиск на паузе' });
     wizard.builtTargets = cfg.targets;
     wizard.report = report;
     wizard.checked = false;
@@ -3449,7 +3477,7 @@
 
     const cfg = ui.loadConfig(storage);
     if (!cfg || !cfg.enabled || !Array.isArray(cfg.targets) || !cfg.targets.length) {
-      setBadge({ kind: 'idle', text: '🎯 Настроить', detail: '' });
+      setBadge({ kind: 'idle', text: '🎯 Настроить охотника', detail: '' });
       return;
     }
     if (cfg.paused) {
@@ -3464,7 +3492,7 @@
     try {
       r = await startFromSavedConfig();
     } catch (e) {
-      setBadge({ kind: 'resumeError', text: '🔴 Не удалось проверить, нажмите для повтора', detail: e && e.message });
+      setBadge({ kind: 'resumeError', text: '🔴 Не вышло проверить — нажмите ещё раз', detail: e && e.message });
       return;
     }
 
@@ -3475,7 +3503,7 @@
       showReconfirm(r.cfg, r.report);
     } else if (r.status === 'off') {
       // I-1: пока шёл прогон, поиск выключили (здесь или в другой вкладке).
-      if (badgeState.kind === 'resuming') setBadge({ kind: 'idle', text: '🎯 Настроить', detail: '' });
+      if (badgeState.kind === 'resuming') setBadge({ kind: 'idle', text: '🎯 Настроить охотника', detail: '' });
     } else if (r.status === 'paused') {
       if (badgeState.kind === 'resuming') setBadge({ kind: 'paused', text: '⏸ Поиск приостановлен', detail: 'нажмите, чтобы настроить заново' });
     } else if (r.status === 'superseded' && badgeState.kind === 'resuming') {

@@ -85,8 +85,20 @@
       return (a, b) => preferred(a) - preferred(b) || toMs(a.startTime) - toMs(b.startTime);
     }
 
-    // Можно ли занять слот, не нарушив другие записи того же дня: между записями
-    // в разных кампусах нужен запас travelMs на дорогу, в одном и том же — можно впритык.
+    // Можно ли занять слот, не нарушив другие записи того же дня. Запас между
+    // записями зависит от того, где они: в одном здании — 15 минут (приём
+    // часто задерживается), в одном комплексе, но в разных корпусах — 30
+    // минут (дойти между корпусами), по разным адресам — travelMs (час на
+    // дорогу). Пересекаться записи не могут нигде.
+    const SAME_BUILDING_GAP_MS = 15 * 60000;
+    const SAME_CAMPUS_GAP_MS = 30 * 60000;
+    const building = (addr) => String(addr || '').trim().toLowerCase().replace(/\s+/g, ' ');
+    function travelGap(a, b, travelMs) {
+      if (building(a) && building(a) === building(b)) return SAME_BUILDING_GAP_MS;
+      if (campus(a) && campus(a) === campus(b)) return SAME_CAMPUS_GAP_MS;
+      return travelMs;
+    }
+
     function travelOk({ selfId, address, slot, appointments, travelMs }) {
       const s = toMs(slot.startTime);
       const e = toMs(slot.endTime);
@@ -94,7 +106,7 @@
       for (const a of appointments || []) {
         if (selfId != null && a.id === selfId) continue;
         if (a.startTime.slice(0, 10) !== day) continue;
-        const gap = campus(a.lpuAddress) === campus(address) ? 0 : travelMs;
+        const gap = travelGap(a.lpuAddress, address, travelMs);
         if (s < toMs(a.endTime) + gap && e > toMs(a.startTime) - gap) return false;
       }
       return true;

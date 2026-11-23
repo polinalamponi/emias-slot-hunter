@@ -71,7 +71,9 @@
           : form.where === 'contains' ? (form.addressContains || null) : null,
         prefer: form.preferUntil ? { until: form.preferUntil, timeTo: form.preferTimeTo || null } : null,
         near: form.nearStart && form.nearEnd ? { start: form.nearStart, end: form.nearEnd } : null,
-        respectTravel: form.respectTravel !== false,
+        // Запас на дорогу между записями — всегда (см. travelOk в core/filters.js):
+        // галку в мастере убрали, снимать её смысла нет.
+        respectTravel: true,
         travelMs: 60 * 60000,
         minLeadMs: 2 * 60 * 60000,
         // По умолчанию после первой записи останавливаемся: время приёма не
@@ -122,9 +124,8 @@
         parts.push(preferText);
       }
       if (t.purpose) parts.push(`цель визита: ${purposeTitle(t.purpose)}`);
-      if (t.respectTravel) parts.push('с запасом на дорогу');
       parts.push(t.mode === 'confirm' ? 'спрашиваю перед записью' : 'записываю сразу');
-      parts.push(t.keepImproving ? 'после записи ищу ещё раньше и переношу' : 'после записи останавливаюсь');
+      parts.push(t.keepImproving ? 'после записи ищу раньше и переношу' : 'после записи останавливаюсь');
 
       // bookDoctor и bookLdp — запись по направлению без текущей записи, для неё
       // отдельная формулировка «Запишу к <специальность> / на <исследование> по
@@ -140,8 +141,8 @@
 
     function describeDryRunItem(item) {
       const head = item.waiting
-        ? `${item.title}: подходящих слотов сейчас нет, жду`
-        : `${item.title}: взяла бы ${human(item.would.startTime)} — ${item.would.address}`;
+        ? `${item.title}: подходящих окошек пока нет, жду`
+        : `${item.title}: записала бы на ${human(item.would.startTime)} — ${item.would.address}`;
       const warn = (item.warnings || []).map((w) => `\n  ⚠ ${w}`).join('');
       const notes = (item.notes || []).map((n) => `\n  · ${n}`).join('');
       return head + warn + notes;

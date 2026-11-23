@@ -242,7 +242,7 @@ test('запись непонятного вида не пропадает мо�
   assert.ok(appt, 'запись есть в списке');
   assert.equal(appt.supported, false);
   assert.equal(appt.current, '2026-10-20T10:00:00+03:00');
-  assert.match(appt.unsupportedReason, /пока не умеет/);
+  assert.match(appt.unsupportedReason, /пока не переносит/);
 });
 
 test('просроченные направления (на кровь и обычные) в мастер не попадают', async () => {

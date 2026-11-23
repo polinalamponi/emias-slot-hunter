@@ -44,7 +44,7 @@
           // Непонятную запись не прячем: человек должен видеть, что скрипт её
           // заметил, но пока не умеет с ней работать.
           out.push({ id: 'appt:' + a.id, scenario: 'unknownAppointment', title: 'Запись', ...common,
-            supported: false, unsupportedReason: 'Такую запись скрипт пока не умеет переносить',
+            supported: false, unsupportedReason: 'Такую запись охотник пока не переносит',
             source: { appointmentId: a.id } });
         }
       }
@@ -96,7 +96,7 @@
         const title = 'Направление';
         out.push({ id: 'ref:' + ref.id, scenario: 'bookReferral', title, current: null,
           address: null, place: ref.lpuName || null, deadline: ref.endTime, supported: false,
-          unsupportedReason: 'Новая запись по такому направлению появится в следующей версии',
+          unsupportedReason: 'По такому направлению охотник пока не записывает',
           source: { referralId: ref.id, lpuId: ref.lpuId } });
       }
 
