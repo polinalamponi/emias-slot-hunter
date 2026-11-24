@@ -27,6 +27,8 @@
     selected: [],        // выбранные варианты (option) с шага 1
     forms: {},           // option.id -> форма условий с шага 2
     report: null,         // результат dryRun() для текущих целей
+    people: [],           // люди аккаунта из core.listPeople() (шаг 1)
+    personOms: null,       // выбранный человек: полис, по которому ищем
     builtTargets: null,    // цели, переданные в core.setTargets перед прогоном
     checked: false,         // галочка «Я проверил(а)» на шаге 3
     loading: false,          // идёт discover()/dryRun()
@@ -555,6 +557,7 @@
     dom.panel.appendChild(h('h3', { text: 'Что сейчас происходит' }));
     // M-1: время берём из lastCheckAt — его ставит только настоящая проверка.
     dom.panel.appendChild(h('p', { class: 'esh-note', text: `Последняя проверка: ${st.lastCheckAt ? hhmm(st.lastCheckAt) : 'ещё не было'}` }));
+    if (cfg && cfg.personOms) dom.panel.appendChild(h('p', { class: 'esh-note', text: `Для кого: полис …${cfg.personOms.slice(-4)}` }));
     dom.panel.appendChild(h('div', {}, lines));
     const logBox = renderLog(logEvents);
     dom.panel.appendChild(logBox);
@@ -616,12 +619,58 @@
   async function loadStep1() {
     renderLoading('Шаг 1 из 3. Что ищем');
     try {
+      // Если в прошлый раз охотили на другого прикреплённого человека —
+      // переключаемся на него ДО discover(): список направлений и записей
+      // должен показывать именно его данные.
+      const cfg = ui.loadConfig(storage);
+      if (cfg && cfg.personOms) {
+        try { await core.usePerson(cfg.personOms); wizard.personOms = cfg.personOms; }
+        catch (e) { /* полиса больше нет в аккаунте — ищем по своему */ }
+      }
       const options = await core.discover();
       wizard.options = options;
+      try { wizard.people = await core.listPeople(); }
+      catch (e) { wizard.people = []; /* без списка людей блок «Для кого» просто не рисуем */ }
       renderStep1(options);
     } catch (e) {
       renderLoadError('Шаг 1 из 3. Что ищем', e && e.message, loadStep1);
     }
+  }
+
+  // Клик по человеку в блоке «Для кого искать» (шаг 1). Направления и записи
+  // у каждого свои, поэтому всё выбранное и заполненное для прежнего человека
+  // сбрасываем — иначе на шаге 2 остались бы условия от чужой записи.
+  async function selectPerson(p) {
+    wizard.personOms = p.oms;
+    try {
+      await core.usePerson(p.oms);
+    } catch (e) {
+      renderLoadError('Шаг 1 из 3. Что ищем', e && e.message, loadStep1);
+      return;
+    }
+    ui.saveConfig(storage, { ...(ui.loadConfig(storage) || {}), personOms: p.oms });
+    wizard.selected = [];
+    wizard.forms = {};
+    loadStep1();
+  }
+
+  // Блок «Для кого искать» показываем, только когда в аккаунте больше одного
+  // полиса: имена из ЕМИАС список не отдаёт, люди различаются маской полиса
+  // и датой рождения.
+  function renderPersonBlock(people) {
+    if (!people || people.length < 2) return null;
+    const box = h('div', { class: 'esh-opt' });
+    box.appendChild(h('p', { text: 'Для кого искать' }));
+    const row = h('div', { class: 'esh-tags' });
+    for (const p of people) {
+      row.appendChild(h('button', {
+        class: 'esh-seg-btn' + (wizard.personOms === p.oms ? ' on' : ''),
+        text: `полис …${p.oms.slice(-4)} · ${p.birth.split('-').reverse().join('.')}`,
+        onclick: () => selectPerson(p),
+      }));
+    }
+    box.appendChild(row);
+    return box;
   }
 
   function isSelected(option) { return wizard.selected.some((o) => o.id === option.id); }
@@ -664,6 +713,8 @@
   function renderStep1(options) {
     clear(dom.panel);
     dom.panel.appendChild(h('h3', { text: 'Шаг 1 из 3. Что ищем' }));
+    const personBlock = renderPersonBlock(wizard.people);
+    if (personBlock) dom.panel.appendChild(personBlock);
     if (!options.length) {
       dom.panel.appendChild(h('p', { class: 'esh-note', text: 'Нет направлений и записей, с которыми охотник умеет работать.' }));
     }
@@ -982,7 +1033,7 @@
       await core.start();
       // C-1 п.2: новое подтверждение снимает паузу (новый объект настроек
       // без paused/pausedAt).
-      ui.saveConfig(storage, { enabled: true, paused: false, targets: wizard.builtTargets, confirmedFor: wizard.report.targetsHash });
+      ui.saveConfig(storage, { enabled: true, paused: false, targets: wizard.builtTargets, confirmedFor: wizard.report.targetsHash, personOms: wizard.personOms || undefined });
       runningFor = wizard.report.targetsHash;
       // Minor: сразу после старта проверок ещё не было — не выдумываем время
       // последней проверки.
@@ -1579,6 +1630,13 @@
     const cfg = ui.loadConfig(storage);
     if (!cfg || !cfg.enabled || !Array.isArray(cfg.targets) || !cfg.targets.length) return { status: 'off' };
     if (cfg.paused) return { status: 'paused', cfg };
+    // Охота сохранена для конкретного человека — до прогонов возвращаемся
+    // на его полис. Если его в аккаунте больше нет, прогон пойдёт по своему
+    // полису и закончится несоответствием (шаг 3 покажут заново).
+    if (cfg.personOms) {
+      try { await core.usePerson(cfg.personOms); }
+      catch (e) { /* см. комментарий выше */ }
+    }
     core.setTargets(cfg.targets);
     const report = await core.dryRun();
     if (attempt !== startAttempt) return { status: 'superseded' };

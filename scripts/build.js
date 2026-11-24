@@ -15,7 +15,11 @@ const ORDER = [
 // ПЕРЕД // ==UserScript==, из-за чего Tampermonkey мог не опознать шапку.
 // Берём строго блок от // ==UserScript== до // ==/UserScript==: комментарии
 // вокруг него (даже начинающиеся с «// @») в шапку не попадут.
-const headerLines = fs.readFileSync(path.join(ROOT, 'userscript/header.js'), 'utf8').split('\n');
+// Приводим переводы строк к \n: на Windows исходники выгружаются с CRLF
+// (git autocrlf), а тесты шапки в test/security.test.js разбирают dist по
+// строкам и на \r спотыкаются.
+const read = (f) => fs.readFileSync(path.join(ROOT, f), 'utf8').replace(/\r\n/g, '\n');
+const headerLines = read('userscript/header.js').split('\n');
 const metaStart = headerLines.findIndex((l) => l.trim() === '// ==UserScript==');
 const metaEnd = headerLines.findIndex((l) => l.trim() === '// ==/UserScript==');
 if (metaStart < 0 || metaEnd < metaStart) throw new Error('userscript/header.js: не найден блок ==UserScript==');
@@ -24,7 +28,7 @@ const header = headerLines.slice(metaStart, metaEnd + 1)
 
 const parts = ORDER
   .filter((f) => fs.existsSync(path.join(ROOT, f)))
-  .map((f) => `/* ---- ${f} ---- */\n${fs.readFileSync(path.join(ROOT, f), 'utf8')}`);
+  .map((f) => `/* ---- ${f} ---- */\n${read(f)}`);
 
 const bundle = `${header}\n\n(function () {\n'use strict';\n${parts.join('\n')}\n})();\n`;
 

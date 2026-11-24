@@ -222,6 +222,38 @@
       return (mine && String(mine.birthDate || '').slice(0, 10)) || null;
     }
 
+    // Люди, прикреплённые к аккаунту: v2/policy/list возвращает все полисы
+    // (свой и членов семьи) с датами рождения — по ним охотник умеет работать
+    // не только на себя. Пустые и дублирующиеся полисы пропускаем. Имен в
+    // этом ответе нет, метка — маска полиса и дата рождения.
+    async function listPeople() {
+      const r = await api.get('v2/policy/list');
+      if (!r.ok || !r.json) throw new Error('ЕМИАС не отдал список полисов');
+      const policies = (r.json.payload && r.json.payload.policies) || [];
+      const out = [];
+      for (const p of policies) {
+        const oms = p && p.omsNumber != null ? String(p.omsNumber) : '';
+        const birth = String((p && p.birthDate) || '').slice(0, 10);
+        if (!oms || !birth || out.some((x) => x.oms === oms)) continue;
+        out.push({ oms, birth, label: `полис …${oms.slice(-4)}, ${birth.split('-').reverse().join('.')}` });
+      }
+      return out;
+    }
+
+    // Переключить охотника на другого прикреплённого человека: ЕМИАС ищет и
+    // записывает по omsNumber+дате рождения из тела запроса — достаточно
+    // подставить их. Полиса нет в аккаунте — понятная ошибка, а не молчание.
+    async function usePerson(oms) {
+      const r = await api.get('v2/policy/list');
+      if (!r.ok || !r.json) throw new Error('ЕМИАС не отдал список полисов');
+      const policies = (r.json.payload && r.json.payload.policies) || [];
+      const mine = policies.find((p) => p && String(p.omsNumber) === String(oms));
+      if (!mine || !mine.birthDate) throw new Error('Такого полиса нет в аккаунте');
+      session.setIdentity({ oms: String(oms), birth: String(mine.birthDate).slice(0, 10) });
+      return { oms: String(oms) };
+    }
+
+
     // Полис и дату рождения предпочтительно передают явно (opts.identity) —
     // например, их вводит пользователь в интерфейсе. Если их нет, пробуем
     // угадать из хранилища сайта, а если даты там нет — из policy/list; любая
@@ -274,6 +306,10 @@
     return {
       init,
       discover: () => discover.list(),
+      // Люди аккаунта и переключение охотника на выбранного человека
+      // (поиск вариантов и записи идут по его полису и дате рождения).
+      listPeople: () => listPeople(),
+      usePerson: (oms) => usePerson(oms),
       setTargets: (list) => runner.setTargets(list.map(normalizeTarget)),
       dryRun: () => runner.dryRun(),
       confirmDryRun: (id) => runner.confirmDryRun(id),
