@@ -197,7 +197,7 @@ test('describeTarget: bookDoctor упоминает выбранную цель 
   assert.match(s, /цель визита: Оформление документов/i);
 });
 
-test('shouldShowThanks: не чаще раза в 3 дня, после «Угостить кофе» — 3 месяца тишины', () => {
+test('shouldShowThanks: не чаще раза в 3 дня, после «Поддержать» — 3 месяца тишины', () => {
   const DAY = 24 * 3600000;
   const now = Date.parse('2026-12-01T10:00:00Z');
   assert.equal(ui.shouldShowThanks(null, now), true, 'ни разу не показывали — показываем');

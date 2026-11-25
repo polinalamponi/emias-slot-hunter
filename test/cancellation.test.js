@@ -321,9 +321,9 @@ test('интерфейс: экран не гаснет, пока идёт пои
   assert.equal(locks.length, 3, 'после остановки новую блокировку не берём');
 });
 
-// После успешной записи — карточка «угостите автора кофе» со ссылкой на
+// После успешной записи — карточка «поддержите проект» со ссылкой на
 // перевод; «Не сейчас» её убирает, а время показа запоминается.
-test('интерфейс: после записи предлагает угостить автора кофе', async () => {
+test('интерфейс: после записи предлагает поддержать проект', async () => {
   const env = await environment({ mode: 'auto', scenario: 'bookLab' });
   const ui = await mountUi(env);
   assert.equal(ui.root.querySelectorAll('.esh-thanks').length, 0, 'до записи карточки нет');
@@ -338,15 +338,17 @@ test('интерфейс: после записи предлагает угос�
   assert.equal(link.rel, 'noopener noreferrer');
   assert.ok(JSON.parse(env.storage.getItem('emiasSlotHunter:thanks')).shownAt, 'время показа запомнено');
   assert.match(card.querySelector('.esh-thanks-title').textContent, /^🎉 Охотник записал вас на \d+ [а-я]+, \d{1,2}:\d\d$/);
+  assert.equal(card.querySelectorAll('p')[1].textContent, 'Рада, что охотник помог 💚 Поддержите проект любой суммой, например, 500 ₽, чтобы он и дальше помогал записываться к врачу быстро и в удобное время.');
+  assert.equal(link.textContent, '💚 Поддержать');
   assert.equal(card.querySelector('.esh-sign').textContent, 'Полина, автор проекта');
   const later = card.querySelectorAll('button').find((b) => b.textContent === 'Не сейчас');
   later.click();
   assert.equal(ui.root.querySelectorAll('.esh-thanks').length, 0, '«Не сейчас» убирает карточку');
 });
 
-// «Угостить кофе»: ссылка открывается в новой вкладке, а в карточке вместо
+// «Поддержать»: ссылка открывается в новой вкладке, а в карточке вместо
 // просьбы остаётся «Спасибо и здоровья вам!», и 3 месяца карточки не будет.
-test('интерфейс: после «Угостить кофе» карточка благодарит', async () => {
+test('интерфейс: после «Поддержать» карточка благодарит', async () => {
   const env = await environment({ mode: 'auto', scenario: 'bookLab' });
   const ui = await mountUi(env);
   await env.timer.queue.shift()();

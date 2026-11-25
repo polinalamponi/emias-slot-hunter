@@ -1273,7 +1273,7 @@
 
   function hideThanks() { clear(dom.thanks); }
 
-  // Сколько держать «Спасибо» после нажатия «Угостить кофе». Ссылка
+  // Сколько держать «Спасибо» после нажатия «Поддержать». Ссылка
   // открывается в новой вкладке, поэтому отсчёт начинаем, когда человек
   // вернулся на страницу ЕМИАС, иначе он благодарность не увидит.
   const THANKS_DONE_MS = 6000;
@@ -1301,12 +1301,12 @@
     saveThanks({ shownAt: now });
     dom.thanks.appendChild(h('div', { class: 'esh-thanks' }, [
       h('p', { class: 'esh-thanks-title', text: ui.bookedHeadline(payload) }),
-      h('p', { text: 'Охотник бесплатный. Если он вам помог, угостите автора кофе ☕ Для меня это знак, что его стоит поддерживать.' }),
+      h('p', { text: 'Рада, что охотник помог 💚 Поддержите проект любой суммой, например, 500 ₽, чтобы он и дальше помогал записываться к врачу быстро и в удобное время.' }),
       h('p', { class: 'esh-sign', text: 'Полина, автор проекта' }),
       h('div', { class: 'esh-btns' }, [
         h('a', {
           class: 'esh-btn primary', href: DONATE_URL, target: '_blank', rel: 'noopener noreferrer',
-          text: '☕ Угостить кофе', onclick: () => { saveThanks({ donatedAt: Date.now() }); showThanksDone(); },
+          text: '💚 Поддержать', onclick: () => { saveThanks({ donatedAt: Date.now() }); showThanksDone(); },
         }),
         h('button', { class: 'esh-btn', text: 'Не сейчас', onclick: hideThanks }),
       ]),
