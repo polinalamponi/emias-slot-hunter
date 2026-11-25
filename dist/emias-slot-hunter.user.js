@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         ЕМИАС: охотник за слотами
 // @namespace    https://github.com/polinalamponi/emias-slot-hunter
-// @version      0.1.7
+// @version      0.1.7.1
 // @description  Следит за расписанием ЕМИАС и ловит освободившиеся слоты: записывает по направлению и переносит записи на более раннее время
 // @author       polinalamponi
 // @homepageURL  https://github.com/polinalamponi/emias-slot-hunter
@@ -22,7 +22,7 @@
 (function (root) {
   'use strict';
 
-  const VERSION = '0.1.5';
+  const VERSION = '0.1.7.1';
   const TZ = 'Europe/Moscow';
 
   function createUtil() {
