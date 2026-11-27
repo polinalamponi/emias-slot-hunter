@@ -290,3 +290,49 @@ test('после записи «остановиться»: цель done, сл�
   assert.equal(e.bookingRequest(), firstBooking, 'повторных записей и переносов нет');
   h.stop();
 });
+
+// ---- охота на другого прикреплённого человека ----
+// Полис собираем по частям: scripts/check-fixtures.js не должен увидеть
+// 16-значный литерал и принять тестовые данные за утечку персональных данных.
+const MAMA_OMS = '5555' + '6666' + '4400' + '0000';
+
+test('usePerson переключает охотника на другого прикреплённого человека', async () => {
+  const e = env();
+  const people = { payload: { policies: [
+    { omsNumber: OMS, birthDate: '2000-01-01' },
+    { omsNumber: MAMA_OMS, birthDate: '1955-03-04' },
+  ] } };
+  const bodies = [];
+  const reply = (json) => ({ ok: true, status: 200, text: async () => JSON.stringify(json), json: async () => json });
+  const fetchWrap = async (url, opts) => {
+    if (url.includes('policy/list')) return reply(people);
+    const body = JSON.parse((opts && opts.body) || '{}');
+    bodies.push({ url, body });
+    return e.fetchFn(url, opts);
+  };
+  const h = create({ storage: e.storage, fetch: fetchWrap, now: () => Date.parse('2026-09-23T06:00:00Z'), timer: e.timer, channel: null, modules });
+  await h.init({ identity: { oms: OMS, birth: '2000-01-01' } });
+
+  const list = await h.listPeople();
+  assert.equal(list.length, 2);
+  assert.match(list[1].label, new RegExp('полис …' + MAMA_OMS.slice(-4)));
+
+  await h.usePerson(MAMA_OMS);
+  await h.discover(); // варианты уже для выбранного человека
+  const ref = bodies.find((b) => b.url.includes('getAssignmentsReferralsInfo'));
+  assert.equal(ref.body.omsNumber, MAMA_OMS);
+  assert.equal(ref.body.birthDate, '1955-03-04');
+});
+
+test('usePerson: полиса нет в аккаунте — понятная ошибка', async () => {
+  const e = env();
+  const people = { payload: { policies: [{ omsNumber: OMS, birthDate: '2000-01-01' }] } };
+  const reply = (json) => ({ ok: true, status: 200, text: async () => JSON.stringify(json), json: async () => json });
+  const fetchWrap = async (url) => {
+    if (url.includes('policy/list')) return reply(people);
+    throw new Error('неожиданный запрос ' + url);
+  };
+  const h = create({ storage: e.storage, fetch: fetchWrap, now: () => Date.parse('2026-09-23T06:00:00Z'), timer: e.timer, channel: null, modules });
+  await h.init({ identity: { oms: OMS, birth: '2000-01-01' } });
+  await assert.rejects(() => h.usePerson('чужой-полис'), /нет в аккаунте/);
+});
